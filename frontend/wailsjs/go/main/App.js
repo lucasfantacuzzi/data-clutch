@@ -78,6 +78,10 @@ export function LoadSession() {
   return window['go']['main']['App']['LoadSession']();
 }
 
+export function McpSecret(arg1) {
+  return window['go']['main']['App']['McpSecret'](arg1);
+}
+
 export function MoveEntry(arg1, arg2) {
   return window['go']['main']['App']['MoveEntry'](arg1, arg2);
 }

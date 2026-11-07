@@ -22,6 +22,8 @@ type Store struct {
 
 	mu    sync.Mutex
 	conns []conn.Config
+
+	tokenCache string
 }
 
 func Open(dir string) (*Store, error) {
@@ -37,6 +39,7 @@ func Open(dir string) (*Store, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
+	s.migrateLegacyToken()
 	return s, nil
 }
 
@@ -161,4 +164,12 @@ func (s *Store) readFallback() map[string]string {
 func (s *Store) writeFallback(m map[string]string) error {
 	b, _ := json.Marshal(m)
 	return os.WriteFile(s.path("secrets.json"), b, 0o600)
+}
+
+// InsecureSecrets reports whether any secret ended up in the plaintext fallback
+// file because no OS keyring was available.
+func (s *Store) InsecureSecrets() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.readFallback()) > 0
 }

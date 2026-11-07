@@ -4,13 +4,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"log/slog"
 	"os"
 )
 
 type Settings struct {
 	McpEnabled bool   `json:"mcpEnabled"`
 	McpPort    int    `json:"mcpPort"`
-	McpToken   string `json:"mcpToken"`
+	McpToken   string `json:"-"` // lives in the OS keyring, never in settings.json
 	Prefs      Prefs  `json:"prefs"`
 }
 
@@ -85,7 +86,47 @@ func (s *Store) loadSettings() Settings {
 		st.McpPort = 7733
 	}
 	st.Prefs.Normalize()
+	st.McpToken = s.mcpToken()
 	return st
+}
+
+const mcpTokenKey = "mcp-token"
+
+// mcpToken reads the token from the secret store, caching it so frequent
+// Settings() calls do not hit the keyring every time.
+func (s *Store) mcpToken() string {
+	if s.tokenCache == "" {
+		s.tokenCache = s.secret(mcpTokenKey)
+	}
+	return s.tokenCache
+}
+
+// migrateLegacyToken moves a plaintext "mcpToken" from an old settings.json
+// into the secret store and rewrites the file without it.
+func (s *Store) migrateLegacyToken() {
+	b, err := os.ReadFile(s.path("settings.json"))
+	if err != nil {
+		return
+	}
+	var legacy struct {
+		McpToken string `json:"mcpToken"`
+	}
+	if json.Unmarshal(b, &legacy) != nil || legacy.McpToken == "" {
+		return
+	}
+	if s.secret(mcpTokenKey) == "" {
+		if err := s.setSecret(mcpTokenKey, legacy.McpToken); err != nil {
+			slog.Error("settings: could not move MCP token to secret store", "err", err)
+			return
+		}
+	}
+	// Re-save without the plaintext token.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	st := s.loadSettings()
+	if out, err := json.MarshalIndent(st, "", "  "); err == nil {
+		_ = os.WriteFile(s.path("settings.json"), out, 0o600)
+	}
 }
 
 // UpdateSettings applies fn and persists. A missing MCP token is generated.
@@ -97,6 +138,12 @@ func (s *Store) UpdateSettings(fn func(*Settings)) (Settings, error) {
 	st.Prefs.Normalize()
 	if st.McpToken == "" {
 		st.McpToken = NewToken()
+	}
+	if st.McpToken != s.mcpToken() {
+		if err := s.setSecret(mcpTokenKey, st.McpToken); err != nil {
+			return st, err
+		}
+		s.tokenCache = st.McpToken
 	}
 	b, _ := json.MarshalIndent(st, "", "  ")
 	return st, os.WriteFile(s.path("settings.json"), b, 0o600)

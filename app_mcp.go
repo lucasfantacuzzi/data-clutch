@@ -10,14 +10,15 @@ import (
 )
 
 type McpInfo struct {
-	Enabled bool   `json:"enabled"`
-	Running bool   `json:"running"`
-	Port    int    `json:"port"`
-	URL     string `json:"url"`
-	Token   string `json:"token"`
-	Error   string `json:"error,omitempty"`
-	Command string `json:"command"` // Claude Code one-liner
-	JSON    string `json:"json"`    // generic client config
+	Enabled  bool   `json:"enabled"`
+	Running  bool   `json:"running"`
+	Port     int    `json:"port"`
+	URL      string `json:"url"`
+	Token    string `json:"token"`
+	Error    string `json:"error,omitempty"`
+	Command  string `json:"command"`  // Claude Code one-liner
+	JSON     string `json:"json"`     // generic client config
+	Insecure bool   `json:"insecure"` // secrets are in the plaintext fallback file (no OS keyring)
 }
 
 func (a *App) startMCP(st store.Settings) {
@@ -48,10 +49,42 @@ func (a *App) mcpInfo() *McpInfo {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	url := fmt.Sprintf("http://127.0.0.1:%d/mcp", st.McpPort)
-	info := &McpInfo{Enabled: st.McpEnabled, Running: a.mcp != nil, Port: st.McpPort, URL: url, Token: st.McpToken, Error: a.mcpErr}
-	info.Command = fmt.Sprintf(`claude mcp add --transport http data-clutch %s --header "Authorization: Bearer %s"`, url, st.McpToken)
-	info.JSON = fmt.Sprintf("{\n  \"mcpServers\": {\n    \"data-clutch\": {\n      \"type\": \"http\",\n      \"url\": %q,\n      \"headers\": { \"Authorization\": \"Bearer %s\" }\n    }\n  }\n}", url, st.McpToken)
+	// The UI only ever sees a masked token; McpSecret returns the real text for copying.
+	masked := maskToken(st.McpToken)
+	info := &McpInfo{Enabled: st.McpEnabled, Running: a.mcp != nil, Port: st.McpPort, URL: url, Token: masked, Error: a.mcpErr, Insecure: a.store.InsecureSecrets()}
+	info.Command, info.JSON = mcpSnippets(url, masked)
 	return info
+}
+
+func maskToken(t string) string {
+	if len(t) <= 4 {
+		return "••••"
+	}
+	return "••••••••" + t[len(t)-4:]
+}
+
+func mcpSnippets(url, token string) (cmd, js string) {
+	cmd = fmt.Sprintf(`claude mcp add --transport http data-clutch %s --header "Authorization: Bearer %s"`, url, token)
+	js = fmt.Sprintf("{\n  \"mcpServers\": {\n    \"data-clutch\": {\n      \"type\": \"http\",\n      \"url\": %q,\n      \"headers\": { \"Authorization\": \"Bearer %s\" }\n    }\n  }\n}", url, token)
+	return
+}
+
+// McpSecret returns the real text to copy: "token", "cmd" or "json".
+func (a *App) McpSecret(what string) string {
+	st := a.store.Settings()
+	url := fmt.Sprintf("http://127.0.0.1:%d/mcp", st.McpPort)
+	cmd, js := mcpSnippets(url, st.McpToken)
+	switch what {
+	case "url":
+		return url
+	case "token":
+		return st.McpToken
+	case "cmd":
+		return cmd
+	case "json":
+		return js
+	}
+	return ""
 }
 
 func (a *App) GetMcpInfo() *McpInfo {

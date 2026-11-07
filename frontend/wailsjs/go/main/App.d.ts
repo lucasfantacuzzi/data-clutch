@@ -46,6 +46,8 @@ export function ListDir(arg1:string):Promise<Array<workspace.Entry>>;
 
 export function LoadSession():Promise<string>;
 
+export function McpSecret(arg1:string):Promise<string>;
+
 export function MoveEntry(arg1:string,arg2:string):Promise<string>;
 
 export function OpenFolder(arg1:string):Promise<string>;

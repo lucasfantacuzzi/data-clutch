@@ -161,6 +161,7 @@ export namespace main {
 	    error?: string;
 	    command: string;
 	    json: string;
+	    insecure: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new McpInfo(source);
@@ -176,6 +177,7 @@ export namespace main {
 	        this.error = source["error"];
 	        this.command = source["command"];
 	        this.json = source["json"];
+	        this.insecure = source["insecure"];
 	    }
 	}
 	export class RedisPage {

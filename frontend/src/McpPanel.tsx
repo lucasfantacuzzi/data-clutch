@@ -1,9 +1,9 @@
 import {useEffect, useState} from 'react'
-import {GetMcpInfo, RegenerateMcpToken, SetMcp} from '../wailsjs/go/main/App'
+import {GetMcpInfo, McpSecret, RegenerateMcpToken, SetMcp} from '../wailsjs/go/main/App'
 import {Notice} from './Dialog'
 import {Icon} from './Icons'
 
-interface Info { enabled: boolean; running: boolean; port: number; url: string; token: string; error?: string; command: string; json: string }
+interface Info { enabled: boolean; running: boolean; port: number; url: string; token: string; error?: string; insecure?: boolean; command: string; json: string }
 
 export function McpPanel() {
     const [info, setInfo] = useState<Info | null>(null)
@@ -13,13 +13,13 @@ export function McpPanel() {
     useEffect(() => { GetMcpInfo().then(i => { setInfo(i as Info); setPort(i.port) }) }, [])
     if (!info) return null
 
-    const copy = async (what: string, text: string) => {
-        try { await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(''), 1500) } catch { /* clipboard blocked */ }
+    const copy = async (what: string) => {
+        try { await navigator.clipboard.writeText(await McpSecret(what)); setCopied(what); setTimeout(() => setCopied(''), 1500) } catch { /* clipboard blocked */ }
     }
     const toggle = async (on: boolean) => setInfo(await SetMcp(on, port) as Info)
 
-    const copyBtn = (what: string, text: string) => (
-        <button className="btn sm" onClick={() => copy(what, text)}>
+    const copyBtn = (what: string) => (
+        <button className="btn sm" onClick={() => copy(what)}>
             <Icon name={copied === what ? 'check' : 'copy'} size={13}/>{copied === what ? 'Copied' : 'Copy'}
         </button>
     )
@@ -46,17 +46,18 @@ export function McpPanel() {
                     <button className="btn" onClick={async () => setInfo(await SetMcp(info.enabled, port) as Info)}>Apply</button>
                 </div>
                 {info.error && <Notice kind="fail">{info.error}</Notice>}
+                {info.insecure && <Notice kind="fail">No OS keyring available: the token and connection passwords are stored in a plaintext file (0600) in the config folder.</Notice>}
                 <span className="lbl">URL</span>
-                <div className="copyrow"><code>{info.url}</code>{copyBtn('url', info.url)}</div>
+                <div className="copyrow"><code>{info.url}</code>{copyBtn('url')}</div>
                 <span className="lbl">Token</span>
                 <div className="copyrow"><code>{info.token}</code>
-                    {copyBtn('token', info.token)}
+                    {copyBtn('token')}
                     <button className="btn sm" title="Invalidates the old token" onClick={async () => setInfo(await RegenerateMcpToken() as Info)}><Icon name="refresh" size={13}/>Regenerate</button>
                 </div>
                 <span className="lbl">Claude Code</span>
-                <div className="copyrow"><code style={{whiteSpace: 'pre-wrap'}}>{info.command}</code>{copyBtn('cmd', info.command)}</div>
+                <div className="copyrow"><code style={{whiteSpace: 'pre-wrap'}}>{info.command}</code>{copyBtn('cmd')}</div>
                 <span className="lbl">Other clients</span>
-                <div className="copyrow"><pre>{info.json}</pre>{copyBtn('json', info.json)}</div>
+                <div className="copyrow"><pre>{info.json}</pre>{copyBtn('json')}</div>
                 <div className="full hint">
                     Tools: list_tables, explain_table (+ prompt), explore_table, relate_tables, suggest_joins, describe_table, table_origin, sample_rows, summarize_table, column_profile, query (read-only SQL).
                 </div>
