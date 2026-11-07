@@ -86,7 +86,7 @@ export default function App() {
     const [dialog, setDialog] = useState<conn.Config | null>(null)
     const [menu, setMenu] = useState<MenuState | null>(null)
     const [mcpOpen, setMcpOpen] = useState(false)
-    const [saveTab, setSaveTab] = useState<Tab | null>(null)
+    const [saveReq, setSaveReq] = useState<{tab: Tab; sql: string} | null>(null)
     const [msg, setMsg] = useState('')
     const [toast, setToast] = useState('')
     const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
@@ -282,7 +282,7 @@ export default function App() {
                                      onChange={p => patchTab(t.id, p)}
                                      onRun={sql => runTab(t, sql)}
                                      onCancel={() => t.queryId && CancelQuery(t.queryId)}
-                                     onSave={() => setSaveTab(t)}/>
+                                     onSave={sql => setSaveReq({tab: t, sql})}/>
                         </div>
                     ))}
                 </div>
@@ -321,10 +321,10 @@ export default function App() {
 
             {dialog && <ConnectionDialog initial={dialog} onClose={() => setDialog(null)} onSaved={async () => { setDialog(null); await reload() }}/>}
             {mcpOpen && <McpDialog onClose={() => setMcpOpen(false)}/>}
-            {saveTab && saveTab.ranSql && (
-                <SaveDialog connId={saveTab.connId} connName={nameOf(saveTab)} sql={saveTab.ranSql}
-                            onClose={() => setSaveTab(null)}
-                            onSaved={(table, rows) => { setSaveTab(null); reloadDuck(); flash(`Saved ${rows} row${rows === 1 ? '' : 's'} to DuckDB table "${table}"`) }}/>
+            {saveReq && (
+                <SaveDialog connId={saveReq.tab.connId} connName={nameOf(saveReq.tab)} sql={saveReq.sql}
+                            onClose={() => setSaveReq(null)}
+                            onSaved={(table, rows) => { setSaveReq(null); reloadDuck(); flash(`Saved ${rows} row${rows === 1 ? '' : 's'} to DuckDB table "${table}"`) }}/>
             )}
             {confirmState && (
                 <ConfirmDialog title={confirmState.title} message={confirmState.message} confirmLabel={confirmState.label} danger

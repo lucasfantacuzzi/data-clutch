@@ -17,4 +17,4 @@ Tests: `CLUTCH_PG=localhost:55432 CLUTCH_REDIS=localhost:56379 go test -race ./.
 
 ## MCP
 
-Toolbar → **MCP** → enable, then copy the `claude mcp add ...` command. Tools: `list_tables`, `describe_table`, `table_origin`, `sample_rows`, `summarize_table`, `column_profile`, `query`.
+Toolbar → **MCP** → enable, then copy the `claude mcp add ...` command. Tools: `list_tables`, `explain_table` (also a prompt), `explore_table`, `relate_tables`, `suggest_joins`, `describe_table`, `table_origin`, `sample_rows`, `summarize_table`, `column_profile`, `query`.

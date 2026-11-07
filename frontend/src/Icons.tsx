@@ -5,7 +5,7 @@ export type IconName =
     | 'string' | 'hash' | 'list' | 'set' | 'zset' | 'stream' | 'more'
     | 'postgres' | 'redis' | 'duckdb'
     | 'play' | 'stop' | 'plus' | 'close' | 'chevron' | 'save' | 'download' | 'gear' | 'copy' | 'trash' | 'edit' | 'refresh' | 'plug' | 'unplug'
-    | 'check' | 'alert' | 'info' | 'logo'
+    | 'pin' | 'check' | 'alert' | 'info' | 'logo'
 
 const S = {fill: 'none', stroke: 'currentColor', strokeWidth: 1.25, strokeLinecap: 'round', strokeLinejoin: 'round'} as const
 
@@ -38,6 +38,7 @@ const PATHS: Record<IconName, ReactNode> = {
     postgres: <g {...S}><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4"/><path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" opacity=".6"/></g>,
     redis: <g {...S}><path d="M8 2.6 14 5 8 7.4 2 5 8 2.6Z"/><path d="M2 8l6 2.4L14 8M2 11l6 2.4 6-2.4"/></g>,
     duckdb: <g><circle cx="8" cy="8" r="6.2" fill="currentColor"/><circle cx="6.2" cy="6.6" r="1" fill="#1e1f22"/><path d="M9.6 7.4c1.6-.2 3.3.3 3.9 1.1-.6.9-2.3 1.2-3.9 1Z" fill="#e0a02a"/></g>,
+    pin: <g {...S}><path d="M10.2 2.5 13.5 5.8l-1.4.7-2 2.2.3 3-.9.9-2.4-2.4-3.2 3.2M5.9 6.4l.9-.9 3-.3 2.2-2.2.7-1.4"/></g>,
     play: <path d="M4.8 2.8v10.4L13 8 4.8 2.8Z" fill="currentColor"/>,
     stop: <rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor"/>,
     plus: <path {...S} strokeWidth={1.5} d="M8 3v10M3 8h10"/>,

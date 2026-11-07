@@ -6,7 +6,7 @@ import {dropContext, registerCompletion, setContext, Dialect} from './completion
 import {statementAt} from './sql'
 import {GridHandle, ResultGrid} from './ResultGrid'
 import {Icon, kindIcon} from './Icons'
-import {Schema, Tab} from './types'
+import {Pinned, Result, Schema, Tab} from './types'
 
 interface Props {
     tab: Tab
@@ -16,14 +16,20 @@ interface Props {
     onChange: (patch: Partial<Tab>) => void
     onRun: (sql: string) => void
     onCancel: () => void
-    onSave: () => void
+    onSave: (sql: string) => void
 }
+
+const MAX_PINS = 10
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2))
 
 export function Console({tab, connName, live, schema, onChange, onRun, onCancel, onSave}: Props) {
     const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
     const grid = useRef<GridHandle>(null)
     const [split, setSplit] = useState(260)
     const run = useRef<() => void>(() => {})
+    const [view, setView] = useState('live') // 'live' or a pinned result id
+    const [renaming, setRenaming] = useState('')
+    const seq = useRef(0)
 
     const dialect: Dialect = tab.kind === 'duck' ? 'duck' : tab.kind
     const lang = tab.kind === 'redis' ? 'redis' : 'sql'
@@ -42,6 +48,10 @@ export function Console({tab, connName, live, schema, onChange, onRun, onCancel,
         }
         if (sql.trim()) onRun(sql.trim())
     }
+
+    // a new run always shows its own result; a closed pin falls back to live
+    useEffect(() => { if (tab.running) setView('live') }, [tab.running])
+    useEffect(() => { if (view !== 'live' && !(tab.pins ?? []).some(p => p.id === view)) setView('live') }, [tab.pins, view])
 
     useEffect(() => { setContext(path, {dialect, schema}) }, [path, dialect, schema])
     useEffect(() => () => { dropContext(path) }, [path])
@@ -68,18 +78,36 @@ export function Console({tab, connName, live, schema, onChange, onRun, onCancel,
         window.addEventListener('mouseup', up)
     }
 
-    const r = tab.result
-    const canSave = !!r && r.columns.length > 0 && tab.kind !== 'duck' && !tab.running
+    const pins = tab.pins ?? []
+    const pinned = pins.find(p => p.id === view)
+    const r: Result | undefined = pinned ? pinned.result : tab.result
+    const shownSql = pinned ? pinned.sql : tab.ranSql
+    const err = pinned ? undefined : tab.error
+    const running = !pinned && tab.running
     const hasRows = !!r && r.columns.length > 0
+    const canSave = hasRows && tab.kind !== 'duck' && !tab.running && !!shownSql
+    const canPin = !pinned && hasRows && !running && !!tab.ranSql && pins.length < MAX_PINS
+
+    const pin = () => {
+        if (!tab.result || !tab.ranSql) return
+        const p: Pinned = {id: uid(), title: `Result ${++seq.current}`, sql: tab.ranSql, result: tab.result, at: Date.now()}
+        onChange({pins: [...pins, p]})
+    }
+    const unpin = (id: string) => onChange({pins: pins.filter(p => p.id !== id)})
+    const rename = (id: string, title: string) => {
+        onChange({pins: pins.map(p => (p.id === id ? {...p, title: title.trim() || p.title} : p))})
+        setRenaming('')
+    }
     const chips = (() => {
-        if (tab.running) return <span className="chip run"><span className="spinner"/>Running…</span>
-        if (tab.error || !r) return null
+        if (running) return <span className="chip run"><span className="spinner"/>Running…</span>
+        if (err || !r) return null
         if (!hasRows) return <><span className="chip ok"><Icon name="check" size={12} color="currentColor"/>{r.message || 'OK'}</span><span className="chip">{r.elapsedMs} ms</span></>
         return <>
             <span className="chip">{r.rows.length} row{r.rows.length === 1 ? '' : 's'}</span>
             <span className="chip">{r.elapsedMs} ms</span>
             {r.truncated && <span className="chip warn" title="Only the first rows are shown">truncated</span>}
             {r.message && <span className="chip">{r.message}</span>}
+            {pinned && <span className="chip pin" title={`Pinned at ${new Date(pinned.at).toLocaleTimeString()}. Not saved anywhere until you use Save to DuckDB.`}><Icon name="pin" size={12} color="currentColor"/>pinned · memory only</span>}
         </>
     })()
 
@@ -119,13 +147,34 @@ export function Console({tab, connName, live, schema, onChange, onRun, onCancel,
                     {chips}
                     <span className="spacer"/>
                     {hasRows && <button className="btn sm" onClick={() => grid.current?.exportCsv()}><Icon name="download" size={14}/>Export CSV</button>}
-                    {canSave && <button className="btn sm" title="Save the full result of the last run into the local DuckDB" onClick={onSave}><Icon name="save" size={14}/>Save to DuckDB</button>}
+                    {!pinned && hasRows && <button className="btn sm" disabled={!canPin} title={pins.length >= MAX_PINS ? `Limit of ${MAX_PINS} pinned results: close one first` : 'Keep this result; later runs will not replace it'} onClick={pin}><Icon name="pin" size={14}/>Pin</button>}
+                    {canSave && <button className="btn sm" title="Re-run this statement and save its full result into the local DuckDB" onClick={() => onSave(shownSql!)}><Icon name="save" size={14}/>Save to DuckDB</button>}
                 </div>
+                {pins.length > 0 && (
+                    <div className="rs-tabs" role="tablist">
+                        <div role="tab" aria-selected={view === 'live'} tabIndex={0} className={`rs-tab ${view === 'live' ? 'active' : ''}`} onClick={() => setView('live')}
+                             onKeyDown={e => e.key === 'Enter' && setView('live')}>Latest</div>
+                        {pins.map(p => (
+                            <div key={p.id} role="tab" aria-selected={view === p.id} tabIndex={0} className={`rs-tab pinned ${view === p.id ? 'active' : ''}`}
+                                 title={`${p.sql}\n\n${p.result.rows.length} rows · ${new Date(p.at).toLocaleTimeString()}`}
+                                 onClick={() => setView(p.id)} onDoubleClick={() => setRenaming(p.id)}
+                                 onKeyDown={e => e.key === 'Enter' && setView(p.id)}>
+                                <Icon name="pin" size={12} color="currentColor"/>
+                                {renaming === p.id
+                                    ? <input autoFocus defaultValue={p.title} className="rs-rename" onClick={e => e.stopPropagation()}
+                                             onBlur={e => rename(p.id, e.target.value)}
+                                             onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') rename(p.id, e.currentTarget.value); if (e.key === 'Escape') setRenaming('') }}/>
+                                    : <span className="rs-title">{p.title}</span>}
+                                <button className="x" title="Close pinned result" aria-label="Close pinned result" onClick={e => { e.stopPropagation(); unpin(p.id) }}><Icon name="close" size={12} color="currentColor"/></button>
+                            </div>
+                        ))}
+                    </div>
+                )}
                 <div className="result-body">
-                    {tab.error && <pre className="error"><Icon name="alert" size={14}/>{tab.error}</pre>}
-                    {!tab.error && r && r.columns.length > 0 && <ResultGrid ref={grid} result={r}/>}
-                    {!tab.error && r && r.columns.length === 0 && <div className="empty">{r.message || 'Done.'}</div>}
-                    {!tab.error && !r && !tab.running && <div className="empty"><Icon name="table" size={26} color="var(--text-disabled)"/>Run a query to see results here.</div>}
+                    {err && <pre className="error"><Icon name="alert" size={14}/>{err}</pre>}
+                    {!err && r && r.columns.length > 0 && <ResultGrid key={pinned?.id ?? 'live'} ref={grid} result={r}/>}
+                    {!err && r && r.columns.length === 0 && <div className="empty">{r.message || 'Done.'}</div>}
+                    {!err && !r && !running && <div className="empty"><Icon name="table" size={26} color="var(--text-disabled)"/>Run a query to see results here.</div>}
                 </div>
             </div>
         </div>

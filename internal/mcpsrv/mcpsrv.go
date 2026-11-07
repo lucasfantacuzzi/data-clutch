@@ -26,7 +26,7 @@ func quote(id string) string { return `"` + strings.ReplaceAll(id, `"`, `""`) + 
 
 func NewMCP(db *duck.DB) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "data-clutch", Version: "0.1.0"}, &mcp.ServerOptions{
-		Instructions: "Query results saved from databases into a local DuckDB. Start with list_tables, then describe_table / summarize_table / column_profile, and use query for analysis. All access is read-only.",
+		Instructions: "Query results saved from databases into a local DuckDB. Start with list_tables, then explore_table for a table overview (or explain_table for a full explanation with sample, anomalies and links), relate_tables to learn how two tables connect (or suggest_joins for all pairs), and query for analysis. All access is read-only.",
 	})
 
 	text := func(v any) (*mcp.CallToolResult, any, error) {
@@ -147,6 +147,71 @@ func NewMCP(db *duck.DB) *mcp.Server {
 			}
 			return text(map[string]any{"stats": stats, "topValues": top})
 		})
+
+	type relateArg struct {
+		TableA string `json:"table_a" jsonschema:"first saved table"`
+		TableB string `json:"table_b" jsonschema:"second saved table"`
+	}
+	mcp.AddTool(s, &mcp.Tool{Name: "relate_tables", Description: "Find how two saved tables relate: ranks the column pairs that most likely link them using name hints and real value overlap, with cardinality (one-to-one / many-to-one / many-to-many), unmatched rows, row count after an inner join, a confidence score and a ready-to-run join SQL. Use this when asked how table X and table Y connect."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a relateArg) (*mcp.CallToolResult, any, error) {
+			qctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			defer cancel()
+			out, err := RelateTables(qctx, db, a.TableA, a.TableB, 5)
+			if err != nil {
+				return nil, nil, err
+			}
+			return text(out)
+		})
+	mcp.AddTool(s, &mcp.Tool{Name: "suggest_joins", Description: "Scan every pair of saved tables and list the most likely joins, strongest first. Use it to get a map of how all saved data connects."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, _ none) (*mcp.CallToolResult, any, error) {
+			qctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+			defer cancel()
+			out, err := SuggestJoins(qctx, db)
+			if err != nil {
+				return nil, nil, err
+			}
+			return text(out)
+		})
+	mcp.AddTool(s, &mcp.Tool{Name: "explore_table", Description: "One-call overview of a saved table: row count, origin, and for every column the null %, distinct count, min/max, a guessed role (unique key, foreign key candidate, category, measure, timestamp...) and top values of categorical columns."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a tableArg) (*mcp.CallToolResult, any, error) {
+			qctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+			defer cancel()
+			out, err := ExploreTable(qctx, db, a.Table)
+			if err != nil {
+				return nil, nil, err
+			}
+			return text(out)
+		})
+
+	type explainArg struct {
+		Table      string `json:"table" jsonschema:"saved table to explain"`
+		SampleRows int    `json:"sample_rows,omitempty" jsonschema:"rows of sample data to include, default and max 200"`
+		Unmasked   bool   `json:"unmasked,omitempty" jsonschema:"set true to include raw values of columns that look like personal data or secrets (e-mail, phone, token...). Off by default."`
+	}
+	mcp.AddTool(s, &mcp.Tool{Name: "explain_table", Description: "Everything needed to explain what a saved table is, from its data: origin SQL, column profile and guessed roles, a varied sample (up to 200 rows), time ranges and numeric distributions, anomalies (nulls, constants, duplicates, outliers, negative amounts, future dates), links to the other saved tables with join SQL, and naming clues. Columns that look like personal data or secrets are masked unless unmasked=true. It returns evidence, not conclusions: write the explanation yourself and flag guesses as guesses."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, a explainArg) (*mcp.CallToolResult, any, error) {
+			qctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+			defer cancel()
+			out, err := ExplainTable(qctx, db, a.Table, a.SampleRows, !a.Unmasked)
+			if err != nil {
+				return nil, nil, err
+			}
+			return text(out)
+		})
+	s.AddPrompt(&mcp.Prompt{
+		Name:        "explain_table",
+		Description: "Explain what a saved table is and contains, based on its data, with facts separated from guesses.",
+		Arguments:   []*mcp.PromptArgument{{Name: "table", Description: "saved table name", Required: true}},
+	}, func(_ context.Context, req *mcp.GetPromptRequest) (*mcp.GetPromptResult, error) {
+		t := req.Params.Arguments["table"]
+		if t == "" {
+			return nil, errors.New("table is required")
+		}
+		return &mcp.GetPromptResult{
+			Description: "Explain table " + t,
+			Messages:    []*mcp.PromptMessage{{Role: "user", Content: &mcp.TextContent{Text: ExplainPrompt(t)}}},
+		}, nil
+	})
 
 	type queryArg struct {
 		SQL   string `json:"sql" jsonschema:"one read-only DuckDB statement (SELECT/WITH/FROM/DESCRIBE/SUMMARIZE/SHOW/EXPLAIN)"`

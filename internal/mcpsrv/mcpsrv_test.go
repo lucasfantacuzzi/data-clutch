@@ -82,6 +82,24 @@ func TestMCPEndToEnd(t *testing.T) {
 	if _, isErr := call("sample_rows", map[string]any{"table": "orders", "limit": 2}); isErr {
 		t.Fatal("sample failed")
 	}
+	if out, isErr := call("explore_table", map[string]any{"table": "orders"}); isErr || !strings.Contains(out, "candidate_keys") {
+		t.Fatalf("%v %s", isErr, out)
+	}
+	if out, isErr := call("relate_tables", map[string]any{"table_a": "orders", "table_b": "orders"}); isErr || !strings.Contains(out, "candidates") {
+		t.Fatalf("%v %s", isErr, out)
+	}
+	if out, isErr := call("explain_table", map[string]any{"table": "orders"}); isErr || !strings.Contains(out, "anomalies") {
+		t.Fatalf("%v %s", isErr, out)
+	}
+	if pr, err := sess.GetPrompt(ctx, &mcp.GetPromptParams{Name: "explain_table", Arguments: map[string]string{"table": "orders"}}); err != nil || len(pr.Messages) != 1 {
+		t.Fatalf("%v %+v", err, pr)
+	}
+	if _, isErr := call("suggest_joins", nil); isErr {
+		t.Fatal("suggest_joins failed")
+	}
+	if _, isErr := call("relate_tables", map[string]any{"table_a": "orders", "table_b": `x"; drop table orders; --`}); !isErr {
+		t.Error("unknown table must be rejected")
+	}
 	for _, q := range []string{"drop table orders", "delete from orders", "select 1; drop table orders"} {
 		if _, isErr := call("query", map[string]any{"sql": q}); !isErr {
 			t.Errorf("must reject %q", q)

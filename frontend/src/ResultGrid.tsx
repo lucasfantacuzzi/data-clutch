@@ -1,6 +1,6 @@
-import {forwardRef, useImperativeHandle, useMemo, useRef} from 'react'
+import {forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react'
 import {AgGridReact} from 'ag-grid-react'
-import {AllCommunityModule, ColDef, GridApi, ModuleRegistry, colorSchemeDark, themeQuartz} from 'ag-grid-community'
+import {AllCommunityModule, ColDef, GridApi, IHeaderParams, ModuleRegistry, colorSchemeDark, themeQuartz} from 'ag-grid-community'
 import {Result} from './types'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -29,9 +29,28 @@ const theme = themeQuartz.withPart(colorSchemeDark).withParams({
     cellHorizontalPadding: 10,
     fontSize: 12.5,
     rowHeight: 24,
-    headerHeight: 28,
+    headerHeight: 40,
     fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace',
 })
+
+// Column header: name on top, SQL type underneath. Sorting is driven here because a custom header replaces the default one.
+function TypedHeader(p: IHeaderParams & {colType?: string}) {
+    const [sort, setSort] = useState(p.column.getSort())
+    useEffect(() => {
+        const on = () => setSort(p.column.getSort())
+        p.column.addEventListener('sortChanged', on)
+        return () => p.column.removeEventListener('sortChanged', on)
+    }, [p.column])
+    return (
+        <div className="th" onClick={e => p.enableSorting && p.progressSort(e.shiftKey)} title={p.colType ? `${p.displayName}: ${p.colType}` : p.displayName}>
+            <div className="th-name">
+                <span>{p.displayName}</span>
+                {sort && <span className="th-sort">{sort === 'asc' ? '▲' : '▼'}</span>}
+            </div>
+            {p.colType && <div className="th-type">{p.colType}</div>}
+        </div>
+    )
+}
 
 export interface GridHandle { exportCsv: () => void }
 
@@ -49,7 +68,8 @@ export const ResultGrid = forwardRef<GridHandle, {result: Result}>(function Resu
         {headerName: '#', valueGetter: p => (p.node?.rowIndex ?? 0) + 1, width: 56, pinned: 'left', sortable: false, resizable: false, cellClass: 'cell-rownum', suppressMovable: true},
         ...result.columns.map((c, i): ColDef => ({
             headerName: c.name,
-            headerTooltip: c.type,
+            headerComponent: TypedHeader,
+            headerComponentParams: {colType: c.type},
             valueGetter: p => p.data[i],
             valueFormatter: p => fmt(p.value) ?? '',
             cellRenderer: (p: {value: unknown}) => p.value === null || p.value === undefined

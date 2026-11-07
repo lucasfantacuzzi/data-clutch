@@ -39,6 +39,14 @@ export interface DuckTable {
 export interface RedisKey { key: string; type: string; ttl: number }
 export interface RedisPage { keys: RedisKey[]; cursor: string; dbSize: number }
 
+export interface Pinned {
+    id: string
+    title: string
+    sql: string
+    result: Result
+    at: number
+}
+
 export interface Tab {
     id: string
     title: string
@@ -49,6 +57,7 @@ export interface Tab {
     error?: string
     running?: boolean
     queryId?: string
+    pins?: Pinned[] // results the user pinned; they survive later runs
     ranSql?: string // the statement that produced `result`, used when saving
     autoRun?: boolean
 }

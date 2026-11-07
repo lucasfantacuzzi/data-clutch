@@ -58,7 +58,7 @@ export function McpDialog({onClose}: {onClose: () => void}) {
                 <span className="lbl">Other clients</span>
                 <div className="copyrow"><pre>{info.json}</pre>{copyBtn('json', info.json)}</div>
                 <div className="full hint">
-                    Tools: list_tables, describe_table, table_origin, sample_rows, summarize_table, column_profile, query (read-only SQL).
+                    Tools: list_tables, explain_table (+ prompt), explore_table, relate_tables, suggest_joins, describe_table, table_origin, sample_rows, summarize_table, column_profile, query (read-only SQL).
                 </div>
             </div>
         </Dialog>
