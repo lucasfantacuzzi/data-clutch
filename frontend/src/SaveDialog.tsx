@@ -1,5 +1,6 @@
 import {useState} from 'react'
 import {SaveQueryToDuck} from '../wailsjs/go/main/App'
+import {Dialog, Notice} from './Dialog'
 
 interface Props {
     connId: string
@@ -31,31 +32,28 @@ export function SaveDialog({connId, connName, sql, onClose, onSaved}: Props) {
     }
 
     return (
-        <div className="overlay" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
-            <div className="dialog" style={{width: 480}}>
-                <h2>Save result to DuckDB</h2>
-                <div className="body">
-                    <label>Table</label>
-                    <input type="text" value={name} autoFocus onChange={e => setName(e.target.value)}/>
-                    <label>If it exists</label>
-                    <select value={mode} onChange={e => setMode(e.target.value)}>
-                        <option value="create">Fail (create new)</option>
-                        <option value="replace">Replace</option>
-                        <option value="append">Append rows</option>
-                    </select>
-                    <div className="full hint">
-                        The statement runs again on this connection and the whole result is streamed into DuckDB
-                        (not only the rows shown). Nothing is changed if it fails or is cancelled.
-                    </div>
-                    <pre className="full sqlpreview">{sql}</pre>
-                    {error && <div className="full test-result fail">{error}</div>}
-                </div>
-                <div className="foot">
+        <Dialog title="Save result to DuckDB" icon="duckdb" width={480} busy={busy} onClose={onClose}
+                footer={<>
                     <div className="spacer"/>
                     <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
                     <button className="btn primary" onClick={save} disabled={busy || !name.trim()}>{busy ? 'Saving…' : 'Save'}</button>
+                </>}>
+            <div className="body">
+                <label htmlFor="s-name">Table</label>
+                <input id="s-name" type="text" value={name} autoFocus onChange={e => setName(e.target.value)}/>
+                <label htmlFor="s-mode">If it exists</label>
+                <select id="s-mode" value={mode} onChange={e => setMode(e.target.value)}>
+                    <option value="create">Fail (create new)</option>
+                    <option value="replace">Replace</option>
+                    <option value="append">Append rows</option>
+                </select>
+                <div className="full hint">
+                    The statement runs again on this connection and the whole result is streamed into DuckDB
+                    (not only the rows shown). Nothing is changed if it fails or is cancelled.
                 </div>
+                <pre className="full sqlpreview">{sql}</pre>
+                {error && <Notice kind="fail">{error}</Notice>}
             </div>
-        </div>
+        </Dialog>
     )
 }

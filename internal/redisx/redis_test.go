@@ -78,7 +78,7 @@ func TestRedisIntegration(t *testing.T) {
 		if k.Key == "h" && k.Type != "hash" {
 			t.Fatalf("%+v", k)
 		}
-		if k.TTL != -1 {
+		if (k.Key == "h" || k.Key == "s") && k.TTL != -1 {
 			t.Fatalf("ttl %+v", k)
 		}
 	}

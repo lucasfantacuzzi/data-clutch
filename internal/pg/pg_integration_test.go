@@ -29,6 +29,7 @@ func testCfg(t *testing.T) conn.Config {
 
 func TestSessionAgainstRealPostgres(t *testing.T) {
 	cfg := testCfg(t)
+	started := time.Now().Add(-time.Second)
 	m := conn.NewManager(map[conn.Kind]conn.Driver{conn.Postgres: Driver{}}, conn.Options{BackoffMin: 100 * time.Millisecond, BackoffMax: 500 * time.Millisecond, PingInterval: time.Second}, nil)
 	defer m.CloseAll()
 	if err := m.Connect(cfg); err != nil {
@@ -54,8 +55,9 @@ func TestSessionAgainstRealPostgres(t *testing.T) {
 			t.Error("write succeeded on a read-only connection")
 		}
 		// exactly one session for this app
+		// only sessions opened by this test: a running app may hold its own
 		var n int
-		if err := ph.Conn().QueryRow(ctx, "select count(*) from pg_stat_activity where application_name='data-clutch'").Scan(&n); err != nil {
+		if err := ph.Conn().QueryRow(ctx, "select count(*) from pg_stat_activity where application_name='data-clutch' and backend_start >= $1", started).Scan(&n); err != nil {
 			return err
 		}
 		if n != 1 {

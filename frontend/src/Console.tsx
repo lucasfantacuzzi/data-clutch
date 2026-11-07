@@ -1,10 +1,11 @@
-import {useEffect, useMemo, useRef, useState} from 'react'
+import {useEffect, useRef, useState} from 'react'
 import Editor, {OnMount} from '@monaco-editor/react'
 import './monaco'
 import {monaco} from './monaco'
 import {dropContext, registerCompletion, setContext, Dialect} from './completion'
 import {statementAt} from './sql'
 import {GridHandle, ResultGrid} from './ResultGrid'
+import {Icon, kindIcon} from './Icons'
 import {Schema, Tab} from './types'
 
 interface Props {
@@ -69,24 +70,31 @@ export function Console({tab, connName, live, schema, onChange, onRun, onCancel,
 
     const r = tab.result
     const canSave = !!r && r.columns.length > 0 && tab.kind !== 'duck' && !tab.running
-    const info = useMemo(() => {
-        if (tab.running) return 'Running…'
-        if (tab.error) return ''
-        if (!r) return ''
-        if (r.columns.length === 0) return `${r.message || 'OK'} · ${r.elapsedMs} ms`
-        return `${r.rows.length} row${r.rows.length === 1 ? '' : 's'}${r.truncated ? ' (truncated)' : ''} · ${r.elapsedMs} ms${r.message ? ' · ' + r.message : ''}`
-    }, [r, tab.running, tab.error])
+    const hasRows = !!r && r.columns.length > 0
+    const chips = (() => {
+        if (tab.running) return <span className="chip run"><span className="spinner"/>Running…</span>
+        if (tab.error || !r) return null
+        if (!hasRows) return <><span className="chip ok"><Icon name="check" size={12} color="currentColor"/>{r.message || 'OK'}</span><span className="chip">{r.elapsedMs} ms</span></>
+        return <>
+            <span className="chip">{r.rows.length} row{r.rows.length === 1 ? '' : 's'}</span>
+            <span className="chip">{r.elapsedMs} ms</span>
+            {r.truncated && <span className="chip warn" title="Only the first rows are shown">truncated</span>}
+            {r.message && <span className="chip">{r.message}</span>}
+        </>
+    })()
 
     return (
         <div className="console">
             <div className="toolbar">
                 {tab.running
-                    ? <button className="tb stop" title="Cancel the running query" onClick={onCancel}>■ Stop</button>
-                    : <button className="tb run" title="Run (Ctrl+Enter)" disabled={!live} onClick={() => run.current()}>▶ Run</button>}
+                    ? <button className="tb stop" title="Cancel the running query" onClick={onCancel}><Icon name="stop" size={14}/>Stop</button>
+                    : <button className="tb run" title="Run (Ctrl+Enter)" disabled={!live} onClick={() => run.current()}><Icon name="play" size={14}/>Run</button>}
                 <span className="tb-sep"/>
-                <span className="tb-label">{tab.kind === 'duck' ? '🦆 ' : ''}{connName}{!live && tab.kind !== 'duck' ? ' — not connected' : ''}</span>
+                <span className="tb-label"><Icon name={kindIcon(tab.kind)} size={14}/>{connName}{!live && tab.kind !== 'duck' && <span className="offline">not connected</span>}</span>
                 <span className="spacer"/>
-                <span className="hint">{tab.kind === 'redis' ? 'Ctrl+Enter runs the current line' : 'Ctrl+Enter runs the selection or current statement'}</span>
+                <span className="hint">{tab.kind === 'redis'
+                    ? <><kbd>Ctrl</kbd><kbd>Enter</kbd> runs the current line</>
+                    : <><kbd>Ctrl</kbd><kbd>Enter</kbd> runs the selection or current statement</>}</span>
             </div>
             <div className="editor" style={{height: split}}>
                 <Editor
@@ -99,24 +107,25 @@ export function Console({tab, connName, live, schema, onChange, onRun, onCancel,
                     options={{
                         minimap: {enabled: false}, fontSize: 13, lineNumbersMinChars: 3, scrollBeyondLastLine: false,
                         automaticLayout: true, quickSuggestions: {other: true, strings: false, comments: false},
-                        suggestOnTriggerCharacters: true, fontFamily: 'ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace',
-                        padding: {top: 6}, renderLineHighlight: 'line', tabSize: 2, wordWrap: 'off',
+                        suggestOnTriggerCharacters: true, fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace', fontLigatures: false,
+                        padding: {top: 8}, renderLineHighlight: 'line', fixedOverflowWidgets: true,
+                        scrollbar: {verticalScrollbarSize: 10, horizontalScrollbarSize: 10}, overviewRulerBorder: false, roundedSelection: false, tabSize: 2, wordWrap: 'off',
                     }}
                 />
             </div>
-            <div className="splitter" onMouseDown={drag}/>
+            <div className="splitter" role="separator" aria-orientation="horizontal" title="Drag to resize" onMouseDown={drag}/>
             <div className="results">
                 <div className="result-bar">
-                    <span>{info}</span>
+                    {chips}
                     <span className="spacer"/>
-                    {r && r.columns.length > 0 && <button className="tb" onClick={() => grid.current?.exportCsv()}>Export CSV</button>}
-                    {canSave && <button className="tb" title="Save the full result of the last run into the local DuckDB" onClick={onSave}>💾 Save to DuckDB</button>}
+                    {hasRows && <button className="btn sm" onClick={() => grid.current?.exportCsv()}><Icon name="download" size={14}/>Export CSV</button>}
+                    {canSave && <button className="btn sm" title="Save the full result of the last run into the local DuckDB" onClick={onSave}><Icon name="save" size={14}/>Save to DuckDB</button>}
                 </div>
                 <div className="result-body">
-                    {tab.error && <pre className="error">{tab.error}</pre>}
+                    {tab.error && <pre className="error"><Icon name="alert" size={14}/>{tab.error}</pre>}
                     {!tab.error && r && r.columns.length > 0 && <ResultGrid ref={grid} result={r}/>}
                     {!tab.error && r && r.columns.length === 0 && <div className="empty">{r.message || 'Done.'}</div>}
-                    {!tab.error && !r && !tab.running && <div className="empty">Run a query to see results here.</div>}
+                    {!tab.error && !r && !tab.running && <div className="empty"><Icon name="table" size={26} color="var(--text-disabled)"/>Run a query to see results here.</div>}
                 </div>
             </div>
         </div>
