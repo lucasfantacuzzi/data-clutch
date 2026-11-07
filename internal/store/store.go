@@ -4,6 +4,7 @@ package store
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -128,16 +129,20 @@ func (s *Store) secret(id string) string {
 }
 
 func (s *Store) setSecret(id, pw string) error {
-	if err := keyring.Set(keyringService, id, pw); err == nil {
+	err := keyring.Set(keyringService, id, pw)
+	if err == nil {
 		return nil
 	}
+	slog.Warn("keyring unavailable, storing secret in plaintext fallback file", "err", err)
 	m := s.readFallback()
 	m[id] = pw
 	return s.writeFallback(m)
 }
 
 func (s *Store) delSecret(id string) {
-	_ = keyring.Delete(keyringService, id)
+	if err := keyring.Delete(keyringService, id); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		slog.Warn("keyring delete failed", "err", err)
+	}
 	m := s.readFallback()
 	if _, ok := m[id]; ok {
 		delete(m, id)

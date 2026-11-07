@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -245,13 +247,18 @@ func Start(addr, token string, db *duck.DB) (*Server, error) {
 	srv := NewMCP(db)
 	h := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return srv }, nil)
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", authed(token, h))
+	mux.Handle("/mcp", localOnly(authed(token, h)))
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 	s := &Server{ln: ln, http: &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}}
-	go s.http.Serve(ln)
+	go func() {
+		if err := s.http.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("mcp: serve failed", "err", err)
+		}
+	}()
+	slog.Info("mcp: listening", "addr", ln.Addr().String())
 	return s, nil
 }
 
@@ -272,6 +279,32 @@ func authed(token string, next http.Handler) http.Handler {
 			w.Header().Set("WWW-Authenticate", "Bearer")
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// localOnly rejects requests whose Host or Origin is not loopback, which blocks
+// DNS-rebinding from a web page even before the bearer token is checked.
+func localOnly(next http.Handler) http.Handler {
+	loopback := func(hostport string) bool {
+		h, _, err := net.SplitHostPort(hostport)
+		if err != nil {
+			h = hostport
+		}
+		return h == "127.0.0.1" || h == "localhost" || h == "::1" || h == "[::1]"
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !loopback(r.Host) {
+			http.Error(w, "forbidden host", http.StatusForbidden)
+			return
+		}
+		if o := r.Header.Get("Origin"); o != "" {
+			u, err := url.Parse(o)
+			if err != nil || !loopback(u.Host) {
+				http.Error(w, "forbidden origin", http.StatusForbidden)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
