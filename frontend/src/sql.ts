@@ -41,3 +41,18 @@ export function statementAt(text: string, offset: number): string {
     }
     return text.slice(pick.start, pick.end).trim()
 }
+
+// Statements worth a confirmation: DROP/TRUNCATE, DELETE/UPDATE without WHERE, Redis FLUSHALL/FLUSHDB.
+export function destructiveReason(text: string, kind: 'postgres' | 'redis' | 'duck'): string | null {
+    if (kind === 'redis') {
+        const m = /^\s*(flushall|flushdb)\b/i.exec(text)
+        return m ? `${m[1].toUpperCase()} removes data from the server.` : null
+    }
+    for (const sp of splitStatements(text)) {
+        const stmt = text.slice(sp.start, sp.end).replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, ' ').trim()
+        const head = /^(drop|truncate|delete|update)\b/i.exec(stmt)?.[1].toLowerCase()
+        if (head === 'drop' || head === 'truncate') return `${head.toUpperCase()} permanently removes data or objects.`
+        if ((head === 'delete' || head === 'update') && !/\bwhere\b/i.test(stmt)) return `${head.toUpperCase()} without WHERE affects every row.`
+    }
+    return null
+}

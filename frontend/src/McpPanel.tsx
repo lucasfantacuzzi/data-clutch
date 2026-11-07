@@ -1,11 +1,11 @@
 import {useEffect, useState} from 'react'
 import {GetMcpInfo, RegenerateMcpToken, SetMcp} from '../wailsjs/go/main/App'
-import {Dialog, Notice} from './Dialog'
+import {Notice} from './Dialog'
 import {Icon} from './Icons'
 
 interface Info { enabled: boolean; running: boolean; port: number; url: string; token: string; error?: string; command: string; json: string }
 
-export function McpDialog({onClose}: {onClose: () => void}) {
+export function McpPanel() {
     const [info, setInfo] = useState<Info | null>(null)
     const [port, setPort] = useState(7733)
     const [copied, setCopied] = useState('')
@@ -25,8 +25,8 @@ export function McpDialog({onClose}: {onClose: () => void}) {
     )
 
     return (
-        <Dialog title="MCP server" icon="gear" width={640} onClose={onClose}
-                footer={<><div className="spacer"/><button className="btn primary" onClick={onClose}>Close</button></>}>
+        <>
+            <h3>MCP server</h3>
             <div className="body" style={{gridTemplateColumns: '110px 1fr'}}>
                 <div className="full hint">
                     Lets an AI client inspect the tables saved in the local DuckDB (read-only). It can never reach your Postgres or Redis connections.
@@ -61,6 +61,6 @@ export function McpDialog({onClose}: {onClose: () => void}) {
                     Tools: list_tables, explain_table (+ prompt), explore_table, relate_tables, suggest_joins, describe_table, table_origin, sample_rows, summarize_table, column_profile, query (read-only SQL).
                 </div>
             </div>
-        </Dialog>
+        </>
     )
 }

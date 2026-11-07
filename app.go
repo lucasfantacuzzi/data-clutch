@@ -14,6 +14,7 @@ import (
 	"data-clutch/internal/pg"
 	"data-clutch/internal/redisx"
 	"data-clutch/internal/store"
+	"data-clutch/internal/workspace"
 )
 
 // App is bound to the frontend; every exported method is callable from JS.
@@ -22,6 +23,7 @@ type App struct {
 	store *store.Store
 	mgr   *conn.Manager
 	duck  *duck.DB
+	ws    *workspace.Workspace
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc // queryID -> cancel
@@ -44,6 +46,10 @@ func (a *App) startup(ctx context.Context) {
 		panic(err)
 	}
 	a.running = map[string]context.CancelFunc{}
+	a.ws = workspace.New()
+	for _, p := range a.loadApproved() {
+		a.ws.Approve(p)
+	}
 	a.mgr = conn.NewManager(
 		map[conn.Kind]conn.Driver{conn.Postgres: pg.Driver{}, conn.Redis: redisx.Driver{}},
 		conn.Options{},
@@ -55,6 +61,7 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
+	a.ws.Close()
 	a.stopMCP()
 	a.mgr.CloseAll()
 	a.duck.Close()

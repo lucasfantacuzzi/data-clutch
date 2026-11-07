@@ -5,13 +5,13 @@ export type IconName =
     | 'string' | 'hash' | 'list' | 'set' | 'zset' | 'stream' | 'more'
     | 'postgres' | 'redis' | 'duckdb'
     | 'play' | 'stop' | 'plus' | 'close' | 'chevron' | 'save' | 'download' | 'gear' | 'copy' | 'trash' | 'edit' | 'refresh' | 'plug' | 'unplug'
-    | 'pin' | 'check' | 'alert' | 'info' | 'logo'
+    | 'pin' | 'check' | 'alert' | 'info' | 'logo' | 'file' | 'newFile' | 'newFolder'
 
 const S = {fill: 'none', stroke: 'currentColor', strokeWidth: 1.25, strokeLinecap: 'round', strokeLinejoin: 'round'} as const
 
 const COLORS: Partial<Record<IconName, string>> = {
     table: '#6f9bd8', view: '#b08ad6', column: '#8f939b', pk: '#e5b95c', index: '#e0955a', constraint: '#9aa1ad', schema: '#8f939b',
-    folder: '#8f939b', folderOpen: '#8f939b', database: '#8f939b', more: '#8f939b',
+    folder: '#8f939b', folderOpen: '#8f939b', file: '#8f939b', database: '#8f939b', more: '#8f939b',
     string: '#6aab73', hash: '#cf8e6d', list: '#56a8f5', set: '#c77dbb', zset: '#e5b95c', stream: '#2aacb8',
     postgres: '#6f9bd8', redis: '#e5584f', duckdb: '#f2c55c',
     play: '#5fb760', stop: '#f75464', check: '#5fb760', alert: '#f75464', info: '#548af7',
@@ -56,6 +56,9 @@ const PATHS: Record<IconName, ReactNode> = {
     check: <g {...S}><circle cx="8" cy="8" r="6"/><path d="m5.4 8.2 1.8 1.8 3.4-3.6"/></g>,
     alert: <g {...S}><circle cx="8" cy="8" r="6"/><path d="M8 4.8v3.8"/><circle cx="8" cy="11.1" r=".4" fill="currentColor"/></g>,
     info: <g {...S}><circle cx="8" cy="8" r="6"/><path d="M8 7.3v3.9"/><circle cx="8" cy="4.9" r=".4" fill="currentColor"/></g>,
+    file: <g {...S}><path d="M4 2.5h5l3 3v8H4v-11Z"/><path d="M9 2.5v3h3M6 8.5h4M6 11h4"/></g>,
+    newFile: <g {...S}><path d="M4 2.5h5l3 3v8H4v-11Z"/><path d="M9 2.5v3h3M8 7.5v4M6 9.5h4"/></g>,
+    newFolder: <g {...S}><path d="M2 4.4c0-.7.5-1.2 1.2-1.2h2.9l1.3 1.5h5.4c.7 0 1.2.5 1.2 1.2v5.9c0 .7-.5 1.2-1.2 1.2H3.2c-.7 0-1.2-.5-1.2-1.2V4.4Z"/><path d="M8 7v4M6 9h4"/></g>,
     logo: <g {...S} strokeWidth={1}><ellipse cx="8" cy="4" rx="5" ry="2"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/></g>,
 }
 

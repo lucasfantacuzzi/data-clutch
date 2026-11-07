@@ -1,20 +1,31 @@
-import {ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react'
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
+import {ContextMenu, MenuItem} from './ContextMenu'
 import {EventsOn} from '../wailsjs/runtime/runtime'
 import {conn} from '../wailsjs/go/models'
 import {
-    CancelQuery, Connect, ConnectionStatuses, DeleteConnection, Disconnect, DuckDrop, DuckQuery, DuckTables, GetSchema,
-    ListConnections, RedisScan, RefreshSchema, RetryNow, RunQuery,
+    CancelQuery, CloseFolder, Connect, ConnectionStatuses, DeleteConnection, Disconnect, DuckDrop, DuckQuery, DuckTables, GetMcpInfo,
+    GetSchema, ListConnections, LoadSession, OpenFolder, PickFolder, PickOpenFile, PickSaveFile, ReadFile, RedisScan, RefreshSchema,
+    RetryNow, RunQuery, SaveSession, WriteFile,
 } from '../wailsjs/go/main/App'
 import {ConnectionDialog, emptyConfig} from './ConnectionDialog'
 import {Tree} from './Tree'
-import {Console} from './Console'
+import {Console, ConsoleHandle, ConnChoice} from './Console'
+import {FileTree, baseName} from './FileTree'
+import {MenuBar, MenuDef} from './MenuBar'
+import {Welcome} from './Welcome'
+import {StatusBar} from './StatusBar'
+import {QuickOpen} from './QuickOpen'
+import {UnsavedDialog} from './UnsavedDialog'
+import {COMMANDS, Handlers, effective, fmtCombo, installShortcuts} from './keybindings'
+import {getActiveEditor} from './monaco'
 import {SaveDialog} from './SaveDialog'
-import {McpDialog} from './McpDialog'
+import {SettingsDialog, Section} from './SettingsDialog'
+import {usePrefs} from './prefs'
+import {destructiveReason} from './sql'
 import {ConfirmDialog} from './ConfirmDialog'
 import {Icon, IconName, kindIcon} from './Icons'
-import {DuckTable, RedisKey, RedisPage, Result, Schema, Status, Tab} from './types'
+import {DuckTable, RedisKey, RedisPage, Result, Schema, Status, Tab, isDirty} from './types'
 
-const ROW_LIMIT = 1000
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2))
 const q = (s: string) => `"${s.replace(/"/g, '""')}"`
 const rq = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
@@ -46,34 +57,7 @@ function duckSchema(tables: DuckTable[]): Schema {
 }
 
 type MenuState = {x: number; y: number; cfg?: conn.Config; duck?: DuckTable}
-type ConfirmState = {title: string; message: string; label: string; run: () => Promise<void>}
-
-function ContextMenu({x, y, onClose, children}: {x: number; y: number; onClose: () => void; children: ReactNode}) {
-    const ref = useRef<HTMLDivElement>(null)
-    const [pos, setPos] = useState({left: x, top: y})
-    useLayoutEffect(() => {
-        const el = ref.current
-        if (!el) return
-        setPos({left: Math.max(4, Math.min(x, window.innerWidth - el.offsetWidth - 4)), top: Math.max(4, Math.min(y, window.innerHeight - el.offsetHeight - 4))})
-    }, [x, y])
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-        window.addEventListener('keydown', onKey)
-        return () => window.removeEventListener('keydown', onKey)
-    }, [onClose])
-    return <div ref={ref} className="menu" role="menu" style={pos} onClick={e => e.stopPropagation()} onContextMenu={e => e.preventDefault()}>{children}</div>
-}
-
-function MenuItem({icon, hint, danger, onClick, children}: {icon?: IconName; hint?: string; danger?: boolean; onClick: () => void; children: ReactNode}) {
-    return (
-        <div className={`menu-item${danger ? ' danger' : ''}`} role="menuitem" tabIndex={0} onClick={onClick}
-             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick() } }}>
-            <span className="mi-ico">{icon && <Icon name={icon} size={14} color="currentColor"/>}</span>
-            <span className="mi-label">{children}</span>
-            {hint && <span className="mi-hint">{hint}</span>}
-        </div>
-    )
-}
+type ConfirmState = {title: string; message: string; label: string; run: () => Promise<void>; cancel?: () => void}
 
 export default function App() {
     const [configs, setConfigs] = useState<conn.Config[]>([])
@@ -85,12 +69,25 @@ export default function App() {
     const [active, setActive] = useState('')
     const [dialog, setDialog] = useState<conn.Config | null>(null)
     const [menu, setMenu] = useState<MenuState | null>(null)
-    const [mcpOpen, setMcpOpen] = useState(false)
+    const {prefs, update, reload: reloadPrefs} = usePrefs()
+    const [settingsOpen, setSettingsOpen] = useState<Section | null>(null)
     const [saveReq, setSaveReq] = useState<{tab: Tab; sql: string} | null>(null)
     const [msg, setMsg] = useState('')
     const [toast, setToast] = useState('')
     const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
+    const [root, setRoot] = useState('')
+    const [quickOpen, setQuickOpen] = useState(false)
+    const [unsaved, setUnsaved] = useState<Tab | null>(null)
+    const [hidden, setHidden] = useState(false) // sidebar collapsed
+    const [dragW, setDragW] = useState<number | null>(null) // sidebar width while dragging
+    const [mcp, setMcp] = useState({running: false, port: 0})
     const [, tick] = useState(0)
+    const tabsRef = useRef<Tab[]>([])
+    const consoles = useRef<Record<string, ConsoleHandle>>({})
+    const handlers = useRef<Handlers>({})
+    const booted = useRef(false)
+    const restored = useRef(false)
+    const untitled = useRef(0)
     const prevState = useRef<Record<string, string>>({})
     const redisRef = useRef(redis)
     redisRef.current = redis
@@ -148,6 +145,8 @@ export default function App() {
         return () => { off(); clearInterval(t) }
     }, [])
 
+    tabsRef.current = tabs
+    const activeTab = tabs.find(t => t.id === active)
     const isLive = (id: string) => id === 'duck' || (!!statuses[id] && ['ready', 'busy'].includes(statuses[id].state))
     const patchTab = (id: string, patch: Partial<Tab>) => setTabs(ts => ts.map(t => (t.id === id ? {...t, ...patch} : t)))
 
@@ -167,12 +166,19 @@ export default function App() {
         const queryId = uid()
         patchTab(tab.id, {running: true, queryId, error: undefined})
         try {
-            const res = (tab.kind === 'duck' ? await DuckQuery(queryId, sql, ROW_LIMIT) : await RunQuery(tab.connId, queryId, sql, ROW_LIMIT)) as Result
+            const res = (tab.kind === 'duck' ? await DuckQuery(queryId, sql, prefs.rowLimit) : await RunQuery(tab.connId, queryId, sql, prefs.rowLimit)) as Result
             patchTab(tab.id, {running: false, result: res, ranSql: sql, error: undefined})
             if (tab.kind === 'duck') reloadDuck()
         } catch (e) {
             patchTab(tab.id, {running: false, error: String(e).replace(/^Error: /, ''), result: undefined})
         }
+    }
+
+    // destructive statements ask first (Settings > Query)
+    const requestRun = (tab: Tab, sql: string) => {
+        const why = prefs.confirmDestructive ? destructiveReason(sql, tab.kind) : null
+        if (!why) { runTab(tab, sql); return }
+        setConfirmState({title: 'Run destructive statement?', message: `${why}\n\n${sql.length > 300 ? sql.slice(0, 300) + '…' : sql}`, label: 'Run', run: () => runTab(tab, sql)})
     }
 
     const consoleFor = (cfg: conn.Config) =>
@@ -217,8 +223,246 @@ export default function App() {
         })
     }
 
-    const activeTab = tabs.find(t => t.id === active)
     const nLive = Object.values(statuses).filter(s => s.state !== 'closed').length
+    const kb = useMemo(() => effective(prefs.keybindings), [prefs.keybindings])
+    const runKey = fmtCombo(kb['query.run'])
+    const modalOpen = () => !!(settingsOpen || dialog || saveReq || confirmState || unsaved || quickOpen)
+    const errText = (e: unknown) => String(e).replace(/^Error: /, '')
+
+    // ---- files, folders and file-backed tabs ----
+    const extKind = (p: string): 'redis' | 'sql' => (/\.redis$/i.test(p) ? 'redis' : 'sql')
+
+    // a new tab inherits the active tab's connection when it fits, else the first live one
+    const defaultConn = (kind: 'redis' | 'sql'): {connId: string; kind: Tab['kind']} => {
+        const cur = tabsRef.current.find(t => t.id === active)
+        if (kind === 'redis') {
+            if (cur?.kind === 'redis') return {connId: cur.connId, kind: 'redis'}
+            const c = configs.find(x => x.kind === 'redis' && isLive(x.id)) ?? configs.find(x => x.kind === 'redis')
+            return {connId: c?.id ?? '', kind: 'redis'}
+        }
+        if (cur && cur.kind !== 'redis') return {connId: cur.connId, kind: cur.kind}
+        const c = configs.find(x => x.kind === 'postgres' && isLive(x.id)) ?? configs.find(x => x.kind === 'postgres')
+        return {connId: c?.id ?? '', kind: 'postgres'}
+    }
+
+    const newQuery = () => openTab({title: `Query ${++untitled.current}`, sql: '', pick: true, ...defaultConn('sql')})
+
+    const openFile = async (path: string) => {
+        const existing = tabsRef.current.find(t => t.filePath === path)
+        if (existing) { setActive(existing.id); consoles.current[existing.id]?.focus(); return }
+        try {
+            const text = await ReadFile(path)
+            openTab({title: baseName(path), filePath: path, savedSql: text, sql: text, pick: true, ...defaultConn(extKind(path))})
+        } catch (e) { setMsg(errText(e)) }
+    }
+
+    const adoptRoot = (dir: string) => { setRoot(dir); reloadPrefs() }
+    const pickFolder = async () => { try { const d = await PickFolder(); if (d) adoptRoot(d) } catch (e) { setMsg(errText(e)) } }
+    const openRecent = async (dir: string) => { try { adoptRoot(await OpenFolder(dir)) } catch (e) { setMsg(errText(e)); reloadPrefs() } }
+    const closeFolder = async () => { await CloseFolder(); setRoot(''); reloadPrefs() }
+    const pickFile = async () => { try { const p = await PickOpenFile(); if (p) openFile(p) } catch (e) { setMsg(errText(e)) } }
+
+    const saveTab = async (id: string, saveAs = false): Promise<boolean> => {
+        const t = tabsRef.current.find(x => x.id === id)
+        if (!t) return false
+        try {
+            let path = t.filePath
+            if (!path || saveAs) {
+                const ext = t.kind === 'redis' ? '.redis' : '.sql'
+                path = await PickSaveFile(t.filePath ? baseName(t.filePath) : t.title.replace(/[^\w.-]+/g, '_') + ext)
+                if (!path) return false
+            }
+            await WriteFile(path, t.sql)
+            patchTab(id, {filePath: path, savedSql: t.sql, title: baseName(path), pick: true})
+            return true
+        } catch (e) { setMsg(errText(e)); return false }
+    }
+
+    const requestClose = (id: string) => {
+        const t = tabsRef.current.find(x => x.id === id)
+        if (t && isDirty(t)) setUnsaved(t)
+        else closeTab(id)
+    }
+
+    // a file/folder was renamed or moved (newPath) or trashed (null): keep tabs pointing at the right file
+    const onPathChanged = (oldPath: string, newPath: string | null) => {
+        setTabs(ts => ts.map(t => {
+            const fp = t.filePath
+            if (!fp || !(fp === oldPath || fp.startsWith(oldPath + '/') || fp.startsWith(oldPath + '\\'))) return t
+            if (newPath === null) return {...t, filePath: undefined, savedSql: undefined} // content stays, as an unsaved query
+            const np = newPath + fp.slice(oldPath.length)
+            return {...t, filePath: np, title: fp === oldPath ? baseName(np) : t.title}
+        }))
+    }
+
+    const cycleTab = (d: number) => {
+        const ts = tabsRef.current
+        if (ts.length < 2) return false
+        const i = ts.findIndex(t => t.id === active)
+        setActive(ts[(i + d + ts.length) % ts.length].id)
+    }
+
+    // ---- global shortcuts (remappable in Settings > Keyboard) ----
+    const guard = (fn: () => boolean | void) => () => (modalOpen() ? false : fn())
+    handlers.current = {
+        'file.new': guard(newQuery),
+        'file.open': guard(() => void pickFile()),
+        'file.openFolder': guard(() => void pickFolder()),
+        'file.save': guard(() => (activeTab ? void saveTab(activeTab.id) : false)),
+        'file.saveAs': guard(() => (activeTab ? void saveTab(activeTab.id, true) : false)),
+        'tab.close': guard(() => (activeTab ? requestClose(activeTab.id) : false)),
+        'tab.next': guard(() => cycleTab(1)),
+        'tab.prev': guard(() => cycleTab(-1)),
+        'nav.quickOpen': guard(() => setQuickOpen(true)),
+        'view.sidebar': guard(() => setHidden(h => !h)),
+        'settings.open': guard(() => setSettingsOpen('appearance')),
+        'query.run': guard(() => (activeTab && consoles.current[activeTab.id] ? consoles.current[activeTab.id].run() : false)),
+        'query.runAlt': guard(() => (activeTab && consoles.current[activeTab.id] ? consoles.current[activeTab.id].run() : false)),
+        'query.cancel': () => {
+            const el = document.activeElement as HTMLElement | null
+            const typing = el && (el.tagName === 'INPUT' || el.tagName === 'SELECT' || (el.tagName === 'TEXTAREA' && !el.classList.contains('inputarea')))
+            if (modalOpen() || menu || typing || !activeTab?.running || !activeTab.queryId) return false
+            CancelQuery(activeTab.queryId)
+        },
+    }
+    useEffect(() => installShortcuts(() => effective(prefsRef.current.keybindings), () => handlers.current), [])
+    const prefsRef = useRef(prefs)
+    prefsRef.current = prefs
+
+    // ---- boot: reopen the last folder, then restore the session ----
+    useEffect(() => {
+        if (booted.current) return
+        booted.current = true
+        ;(async () => {
+            if (prefs.lastFolder) { try { setRoot(await OpenFolder(prefs.lastFolder)) } catch { reloadPrefs() } }
+            try {
+                const raw = await LoadSession()
+                const s = raw ? JSON.parse(raw) : null
+                const out: Tab[] = []
+                for (const st of s?.tabs ?? []) {
+                    const t: Tab = {id: st.id || uid(), title: st.title || 'Query', connId: st.connId ?? '', kind: st.kind ?? 'postgres', sql: st.sql ?? '', pick: !!st.pick}
+                    if (st.filePath) {
+                        try {
+                            const disk = await ReadFile(st.filePath)
+                            t.filePath = st.filePath; t.savedSql = disk
+                            t.sql = st.sql === st.savedSql ? disk : st.sql // untouched tabs follow the file, edited ones keep their edits
+                        } catch { /* file gone or no longer readable: the text lives on as an unsaved query */ }
+                    }
+                    out.push(t)
+                }
+                if (out.length) { setTabs(out); setActive(out.some(t => t.id === s.active) ? s.active : out[0].id) }
+                if (s?.hidden) setHidden(true)
+                for (const t of out) if (/^Query \d+$/.test(t.title)) untitled.current = Math.max(untitled.current, Number(t.title.slice(6)))
+            } catch { /* corrupt session file: start clean */ }
+            restored.current = true
+        })()
+    }, [])
+
+    // persist open tabs (text only, not results) shortly after any change
+    useEffect(() => {
+        if (!restored.current) return
+        const h = setTimeout(() => {
+            const snap = {v: 1, active, hidden, tabs: tabs.map(({id, title, connId, kind, sql, filePath, savedSql, pick}) => ({id, title, connId, kind, sql, filePath, savedSql, pick}))}
+            SaveSession(JSON.stringify(snap)).catch(() => {})
+        }, 500)
+        return () => clearTimeout(h)
+    }, [tabs, active, hidden])
+
+    // autosave file tabs once typing pauses
+    useEffect(() => {
+        if (!prefs.autosave) return
+        const h = setTimeout(() => { for (const t of tabsRef.current) if (isDirty(t)) saveTab(t.id) }, 1000)
+        return () => clearTimeout(h)
+    }, [tabs, prefs.autosave])
+
+    // files edited outside the app: follow them, or ask when we hold unsaved edits
+    useEffect(() => EventsOn('fs:changed', async (paths: string[]) => {
+        const changed = new Set(paths)
+        for (const t of tabsRef.current) {
+            if (!t.filePath || !changed.has(t.filePath)) continue
+            let disk: string
+            try { disk = await ReadFile(t.filePath) } catch { continue }
+            if (disk === t.savedSql) continue // our own save
+            if (t.sql === t.savedSql) patchTab(t.id, {sql: disk, savedSql: disk})
+            else if (t.sql === disk) patchTab(t.id, {savedSql: disk})
+            else setConfirmState({
+                title: 'File changed on disk', label: 'Reload',
+                message: `"${baseName(t.filePath)}" was modified outside data-clutch.\n\nReload it and discard your unsaved edits?`,
+                run: async () => patchTab(t.id, {sql: disk, savedSql: disk}),
+                cancel: () => patchTab(t.id, {savedSql: disk}), // keep my edits; they now differ from the new file
+            })
+        }
+    }), [])
+
+    useEffect(() => { GetMcpInfo().then(i => setMcp({running: i.running, port: i.port})).catch(() => {}) }, [settingsOpen])
+
+    const choicesFor = (t: Tab): ConnChoice[] => {
+        const label = (c: conn.Config) => c.name + (isLive(c.id) ? '' : ' (not connected)')
+        if (t.kind === 'redis') return configs.filter(c => c.kind === 'redis').map(c => ({value: c.id, label: label(c)}))
+        return [...configs.filter(c => c.kind === 'postgres').map(c => ({value: c.id, label: label(c)})), {value: 'duck', label: 'Local DuckDB'}]
+    }
+    const pickConn = (t: Tab, value: string) => {
+        if (value === 'duck') patchTab(t.id, {connId: 'duck', kind: 'duck'})
+        else if (value === '') patchTab(t.id, {connId: '', kind: t.kind === 'duck' ? 'postgres' : t.kind})
+        else patchTab(t.id, {connId: value, kind: (cfgOf(value)?.kind ?? t.kind) as Tab['kind']})
+    }
+
+    const editorDo = (action: string) => {
+        const ed = getActiveEditor()
+        if (!ed) return
+        ed.focus()
+        ed.trigger('menu', action, null)
+    }
+
+    const keyLabel = (id: string) => fmtCombo(kb[id])
+    const menus: MenuDef[] = [
+        {label: 'File', items: [
+            {label: 'New query tab', hint: keyLabel('file.new'), run: newQuery},
+            {label: 'Open file…', hint: keyLabel('file.open'), run: pickFile},
+            {label: 'Open folder…', hint: keyLabel('file.openFolder'), run: pickFolder},
+            ...(prefs.recentFolders?.length ? [{header: 'Recent folders'}, ...prefs.recentFolders.slice(0, 5).map(r => ({label: baseName(r), hint: undefined, run: () => openRecent(r)}))] : []),
+            ...(root ? [{label: 'Close folder', run: closeFolder}] : []),
+            '-',
+            {label: 'Save', hint: keyLabel('file.save'), disabled: !activeTab, run: () => activeTab && saveTab(activeTab.id)},
+            {label: 'Save as…', hint: keyLabel('file.saveAs'), disabled: !activeTab, run: () => activeTab && saveTab(activeTab.id, true)},
+            {label: 'Close tab', hint: keyLabel('tab.close'), disabled: !activeTab, run: () => activeTab && requestClose(activeTab.id)},
+            '-',
+            {label: 'Settings…', hint: keyLabel('settings.open'), run: () => setSettingsOpen('appearance')},
+        ]},
+        {label: 'Edit', items: [
+            {label: 'Undo', hint: 'Ctrl+Z', disabled: !activeTab, run: () => editorDo('undo')},
+            {label: 'Redo', hint: 'Ctrl+Y', disabled: !activeTab, run: () => editorDo('redo')},
+            '-',
+            {label: 'Find', hint: 'Ctrl+F', disabled: !activeTab, run: () => editorDo('actions.find')},
+            {label: 'Replace', hint: 'Ctrl+H', disabled: !activeTab, run: () => editorDo('editor.action.startFindReplace')},
+            {label: 'Select all', hint: 'Ctrl+A', disabled: !activeTab, run: () => editorDo('editor.action.selectAll')},
+        ]},
+        {label: 'View', items: [
+            {label: hidden ? 'Show sidebar' : 'Hide sidebar', hint: keyLabel('view.sidebar'), run: () => setHidden(h => !h)},
+            {label: 'Go to file…', hint: keyLabel('nav.quickOpen'), run: () => setQuickOpen(true)},
+            '-',
+            {header: 'Theme'},
+            {label: 'Dark', checked: prefs.theme === 'dark', run: () => update({theme: 'dark'})},
+            {label: 'Light', checked: prefs.theme === 'light', run: () => update({theme: 'light'})},
+            {label: 'Follow system', checked: prefs.theme === 'system', run: () => update({theme: 'system'})},
+        ]},
+    ]
+
+    const startResize = (e: React.MouseEvent) => {
+        e.preventDefault()
+        const x0 = e.clientX, w0 = prefs.sidebarWidth
+        let w = w0
+        const move = (ev: MouseEvent) => { w = Math.max(180, Math.min(700, w0 + ev.clientX - x0)); setDragW(w) }
+        const up = () => {
+            window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up)
+            document.body.classList.remove('resizing-col')
+            update({sidebarWidth: w}); setDragW(null)
+        }
+        document.body.classList.add('resizing-col')
+        window.addEventListener('mousemove', move)
+        window.addEventListener('mouseup', up)
+    }
+    const sbWidth = dragW ?? prefs.sidebarWidth
     const duckSch = useMemo(() => duckSchema(duck), [duck])
 
     const runConfirm = async () => {
@@ -227,18 +471,22 @@ export default function App() {
         try { await c?.run() } catch (e) { setMsg(String(e)) }
     }
 
-    const nameOf = (t: Tab) => (t.kind === 'duck' ? 'Local DuckDB' : cfgOf(t.connId)?.name ?? 'deleted connection')
+    const nameOf = (t: Tab) => (t.kind === 'duck' ? 'Local DuckDB' : t.connId === '' ? 'No connection' : cfgOf(t.connId)?.name ?? 'deleted connection')
 
     return (
         <div className="app" onClick={() => setMenu(null)}>
-            <div className="main">
-                <div className="sidebar">
+            <MenuBar menus={menus}/>
+            <div className="main" style={{gridTemplateColumns: hidden ? '1fr' : `${sbWidth}px 1fr`}}>
+                <div className="sidebar" style={hidden ? {display: 'none'} : undefined}>
                     <div className="sidebar-head">
                         <span className="title">Database</span><span className="spacer"/>
                         <button className="icon-btn" title="New connection" aria-label="New connection" onClick={() => setDialog(emptyConfig())}><Icon name="plus" color="currentColor"/></button>
                         <button className="icon-btn" title="DuckDB console" aria-label="DuckDB console" onClick={duckConsole}><Icon name="duckdb"/></button>
-                        <button className="icon-btn" title="MCP server" aria-label="MCP server" onClick={() => setMcpOpen(true)}><Icon name="gear" color="currentColor"/></button>
+                        <button className="icon-btn" title="Settings (Ctrl+,)" aria-label="Settings" onClick={() => setSettingsOpen("appearance")}><Icon name="gear" color="currentColor"/></button>
                     </div>
+                    <FileTree root={root} onOpenFile={openFile} onOpenFolder={pickFolder} onCloseFolder={closeFolder}
+                              onPathChanged={onPathChanged} onError={setMsg}
+                              confirm={c => setConfirmState({...c})}/>
                     <Tree configs={configs} statuses={statuses} schemas={schemas} redis={redis} duck={duck}
                           onConnect={onConnect}
                           onMenu={(cfg, x, y) => setMenu({cfg, x, y})}
@@ -248,51 +496,43 @@ export default function App() {
                           onDuckTable={duckOpen}
                           onDuckMenu={(t, x, y) => setMenu({duck: t, x, y})}/>
                 </div>
+                {!hidden && <div className="sb-resizer" role="separator" aria-orientation="vertical" title="Drag to resize" style={{left: sbWidth - 3}} onMouseDown={startResize}/>}
                 <div className="workspace">
                     <div className="tabs" role="tablist">
                         {tabs.map(t => (
-                            <div key={t.id} className={`tab ${t.id === active ? 'active' : ''}`} role="tab" aria-selected={t.id === active} tabIndex={0} title={t.title}
+                            <div key={t.id} className={`tab ${t.id === active ? 'active' : ''}`} role="tab" aria-selected={t.id === active} tabIndex={0} title={t.filePath ?? t.title}
                                  onClick={() => setActive(t.id)}
                                  onKeyDown={e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setActive(t.id) } }}
-                                 onAuxClick={e => e.button === 1 && closeTab(t.id)}>
-                                {t.running ? <span className="tdot" title="Running"/> : <Icon name={kindIcon(t.kind)} size={14}/>}
-                                <span className="tab-title">{t.title}</span>
-                                <button className="x" title="Close" aria-label={`Close ${t.title}`} onClick={e => { e.stopPropagation(); closeTab(t.id) }}><Icon name="close" size={12}/></button>
+                                 onAuxClick={e => e.button === 1 && requestClose(t.id)}>
+                                {t.running ? <span className="tdot" title="Running"/> : <Icon name={t.filePath !== undefined ? 'file' : kindIcon(t.kind)} size={14}/>}
+                                <span className="tab-title">{t.title}</span>{isDirty(t) && <span className="dirty" title="Unsaved changes" aria-label="unsaved"/>}
+                                <button className="x" title="Close" aria-label={`Close ${t.title}`} onClick={e => { e.stopPropagation(); requestClose(t.id) }}><Icon name="close" size={12}/></button>
                             </div>
                         ))}
                     </div>
                     {tabs.length === 0 && (
-                        <div className="welcome">
-                            <Icon name="logo" size={44} color="var(--text-disabled)"/>
-                            <div className="welcome-title">data-clutch</div>
-                            <div className="welcome-sub">Open a connection to get started</div>
-                            <div className="welcome-keys">
-                                <span>Connect</span><span><kbd>Double-click</kbd> a connection</span>
-                                <span>Open a table or key</span><span><kbd>Double-click</kbd> it in the tree</span>
-                                <span>New console</span><span><kbd>Right-click</kbd> a connection</span>
-                                <span>Run a query</span><span><kbd>Ctrl</kbd><kbd>Enter</kbd></span>
-                            </div>
-                        </div>
+                        <Welcome recent={prefs.recentFolders ?? []} keys={{run: kb['query.run'], open: kb['file.open'], folder: kb['file.openFolder'], neu: kb['file.new']}}
+                                 onOpenFolder={pickFolder} onOpenRecent={openRecent} onOpenFile={pickFile} onNew={newQuery}/>
                     )}
                     {/* every tab stays mounted so editor state and results survive switching */}
                     {tabs.map(t => (
                         <div key={t.id} style={{display: t.id === active ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column'}}>
-                            <Console tab={t} connName={nameOf(t)} live={isLive(t.connId)}
+                            <Console ref={el => { if (el) consoles.current[t.id] = el; else delete consoles.current[t.id] }}
+                                     tab={t} connName={nameOf(t)} live={isLive(t.connId)} runKey={runKey}
+                                     choices={t.pick || t.filePath !== undefined ? choicesFor(t) : undefined}
+                                     onPickConn={v => pickConn(t, v)} onToast={flash} onError={setMsg}
                                      schema={t.kind === 'duck' ? duckSch : schemas[t.connId]}
                                      onChange={p => patchTab(t.id, p)}
-                                     onRun={sql => runTab(t, sql)}
+                                     onRun={sql => requestRun(t, sql)}
                                      onCancel={() => t.queryId && CancelQuery(t.queryId)}
                                      onSave={sql => setSaveReq({tab: t, sql})}/>
                         </div>
                     ))}
                 </div>
             </div>
-            <div className="statusbar">
-                <span className="sb-item"><span className={`dot ${nLive ? 'ready' : 'closed'}`}/>{nLive} active connection{nLive === 1 ? '' : 's'}</span>
-                <span className="sb-item"><Icon name="duckdb" size={12}/>{duck.length} saved table{duck.length === 1 ? '' : 's'}</span>
-                <span className="spacer"/>
-                {msg && <button className="sb-item sb-err" title="Click to dismiss" onClick={() => setMsg('')}><Icon name="alert" size={12} color="currentColor"/><span className="sb-msg">{msg}</span><Icon name="close" size={10}/></button>}
-            </div>
+            <StatusBar nLive={nLive} nTables={duck.length} root={root} tab={activeTab} connName={activeTab ? nameOf(activeTab) : ''}
+                       live={activeTab ? isLive(activeTab.connId) : false} result={activeTab?.result} mcp={mcp}
+                       msg={msg} onClearMsg={() => setMsg('')} onOpenSettings={() => setSettingsOpen('mcp')}/>
 
             {menu?.cfg && (() => {
                 const cfg = menu.cfg!
@@ -320,7 +560,7 @@ export default function App() {
             )}
 
             {dialog && <ConnectionDialog initial={dialog} onClose={() => setDialog(null)} onSaved={async () => { setDialog(null); await reload() }}/>}
-            {mcpOpen && <McpDialog onClose={() => setMcpOpen(false)}/>}
+            {settingsOpen && <SettingsDialog initial={settingsOpen} onClose={() => setSettingsOpen(null)}/>}
             {saveReq && (
                 <SaveDialog connId={saveReq.tab.connId} connName={nameOf(saveReq.tab)} sql={saveReq.sql}
                             onClose={() => setSaveReq(null)}
@@ -328,8 +568,15 @@ export default function App() {
             )}
             {confirmState && (
                 <ConfirmDialog title={confirmState.title} message={confirmState.message} confirmLabel={confirmState.label} danger
-                               onCancel={() => setConfirmState(null)} onConfirm={runConfirm}/>
+                               onCancel={() => { confirmState.cancel?.(); setConfirmState(null) }} onConfirm={runConfirm}/>
             )}
+            {unsaved && (
+                <UnsavedDialog name={unsaved.title}
+                               onCancel={() => setUnsaved(null)}
+                               onDiscard={() => { closeTab(unsaved.id); setUnsaved(null) }}
+                               onSave={async () => { const t = unsaved; setUnsaved(null); if (await saveTab(t.id)) closeTab(t.id) }}/>
+            )}
+            {quickOpen && <QuickOpen root={root} onOpen={openFile} onClose={() => setQuickOpen(false)}/>}
             {toast && <div className="toast" role="status"><Icon name="check" color="currentColor"/>{toast}</div>}
         </div>
     )

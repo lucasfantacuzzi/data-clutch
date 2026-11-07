@@ -60,4 +60,9 @@ export interface Tab {
     pins?: Pinned[] // results the user pinned; they survive later runs
     ranSql?: string // the statement that produced `result`, used when saving
     autoRun?: boolean
+    filePath?: string // set when the tab is backed by a file on disk
+    pick?: boolean // show the connection picker in the toolbar (file-backed and new query tabs)
+    savedSql?: string // file content as last read/written; sql !== savedSql means unsaved
 }
+
+export const isDirty = (t: Tab) => t.filePath !== undefined && t.sql !== t.savedSql

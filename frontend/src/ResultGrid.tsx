@@ -1,37 +1,60 @@
-import {forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState} from 'react'
+import {useEffect, useMemo, useRef, useState} from 'react'
 import {AgGridReact} from 'ag-grid-react'
-import {AllCommunityModule, ColDef, GridApi, IHeaderParams, ModuleRegistry, colorSchemeDark, themeQuartz} from 'ag-grid-community'
+import {AllCommunityModule, ColDef, GridApi, IHeaderParams, ModuleRegistry, colorSchemeDark, colorSchemeLight, themeQuartz} from 'ag-grid-community'
 import {Result} from './types'
+import {usePrefs} from './prefs'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
-const theme = themeQuartz.withPart(colorSchemeDark).withParams({
+const darkParams = {
     backgroundColor: '#1e1f22',
     foregroundColor: '#bcbec4',
     accentColor: '#3574f0',
     headerBackgroundColor: '#2b2d30',
     headerTextColor: '#dfe1e5',
-    headerFontWeight: 600,
-    headerFontSize: 12,
     oddRowBackgroundColor: '#212226',
     borderColor: '#2f3236',
-    wrapperBorder: false,
-    wrapperBorderRadius: 0,
     headerColumnBorder: {color: '#393b40'},
     headerRowBorder: {color: '#43454a'},
     columnBorder: {color: '#2a2c30'},
-    rowBorder: false,
     headerColumnResizeHandleColor: '#4e5157',
     rowHoverColor: '#2e436e55',
     selectedRowBackgroundColor: '#2e436e',
     rangeSelectionBorderColor: '#548af7',
     rangeSelectionBackgroundColor: '#3574f033',
-    cellHorizontalPadding: 10,
-    fontSize: 12.5,
-    rowHeight: 24,
-    headerHeight: 40,
-    fontFamily: '"JetBrains Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace',
-})
+}
+const lightParams = {
+    backgroundColor: '#ffffff',
+    foregroundColor: '#1e1f22',
+    accentColor: '#3574f0',
+    headerBackgroundColor: '#f7f8fa',
+    headerTextColor: '#1e1f22',
+    oddRowBackgroundColor: '#f9fafb',
+    borderColor: '#e1e3e8',
+    headerColumnBorder: {color: '#e1e3e8'},
+    headerRowBorder: {color: '#d3d5db'},
+    columnBorder: {color: '#eceef2'},
+    headerColumnResizeHandleColor: '#c4c6cc',
+    rowHoverColor: '#d4e2ff88',
+    selectedRowBackgroundColor: '#d4e2ff',
+    rangeSelectionBorderColor: '#3574f0',
+    rangeSelectionBackgroundColor: '#3574f033',
+}
+
+const makeTheme = (dark: boolean, fontFamily: string, fontSize: number, compact: boolean) =>
+    themeQuartz.withPart(dark ? colorSchemeDark : colorSchemeLight).withParams({
+        ...(dark ? darkParams : lightParams),
+        headerFontWeight: 600,
+        headerFontSize: 12,
+        wrapperBorder: false,
+        wrapperBorderRadius: 0,
+        rowBorder: false,
+        cellHorizontalPadding: 10,
+        fontSize: fontSize - 0.5,
+        rowHeight: compact ? 20 : 24,
+        headerHeight: compact ? 34 : 40,
+        fontFamily,
+    })
 
 // Column header: name on top, SQL type underneath. Sorting is driven here because a custom header replaces the default one.
 function TypedHeader(p: IHeaderParams & {colType?: string}) {
@@ -52,17 +75,16 @@ function TypedHeader(p: IHeaderParams & {colType?: string}) {
     )
 }
 
-export interface GridHandle { exportCsv: () => void }
-
 const fmt = (v: unknown) => {
     if (v === null || v === undefined) return null
     if (typeof v === 'object') return JSON.stringify(v)
     return String(v)
 }
 
-export const ResultGrid = forwardRef<GridHandle, {result: Result}>(function ResultGrid({result}, ref) {
+export function ResultGrid({result}: {result: Result}) {
     const api = useRef<GridApi | null>(null)
-    useImperativeHandle(ref, () => ({exportCsv: () => api.current?.exportDataAsCsv()}))
+    const {prefs, resolved, monoFont} = usePrefs()
+    const theme = useMemo(() => makeTheme(resolved === 'dark', monoFont, prefs.fontSize, prefs.density === 'compact'), [resolved, monoFont, prefs.fontSize, prefs.density])
 
     const cols = useMemo<ColDef[]>(() => [
         {headerName: '#', valueGetter: p => (p.node?.rowIndex ?? 0) + 1, width: 56, pinned: 'left', sortable: false, resizable: false, cellClass: 'cell-rownum', suppressMovable: true},
@@ -94,4 +116,4 @@ export const ResultGrid = forwardRef<GridHandle, {result: Result}>(function Resu
             animateRows={false}
         />
     )
-})
+}

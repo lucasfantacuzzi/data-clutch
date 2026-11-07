@@ -138,6 +138,20 @@ export namespace duck {
 
 export namespace main {
 	
+	export class ExportInfo {
+	    path: string;
+	    rows: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExportInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.rows = source["rows"];
+	    }
+	}
 	export class McpInfo {
 	    enabled: boolean;
 	    running: boolean;
@@ -471,6 +485,74 @@ export namespace result {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace store {
+	
+	export class Prefs {
+	    theme: string;
+	    fontFamily: string;
+	    fontSize: number;
+	    density: string;
+	    wordWrap: boolean;
+	    minimap: boolean;
+	    lineNumbers: boolean;
+	    tabSize: number;
+	    autosave: boolean;
+	    rowLimit: number;
+	    timeoutSec: number;
+	    confirmDestructive: boolean;
+	    sidebarWidth: number;
+	    keybindings: Record<string, string>;
+	    recentFolders: string[];
+	    lastFolder: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Prefs(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.theme = source["theme"];
+	        this.fontFamily = source["fontFamily"];
+	        this.fontSize = source["fontSize"];
+	        this.density = source["density"];
+	        this.wordWrap = source["wordWrap"];
+	        this.minimap = source["minimap"];
+	        this.lineNumbers = source["lineNumbers"];
+	        this.tabSize = source["tabSize"];
+	        this.autosave = source["autosave"];
+	        this.rowLimit = source["rowLimit"];
+	        this.timeoutSec = source["timeoutSec"];
+	        this.confirmDestructive = source["confirmDestructive"];
+	        this.sidebarWidth = source["sidebarWidth"];
+	        this.keybindings = source["keybindings"];
+	        this.recentFolders = source["recentFolders"];
+	        this.lastFolder = source["lastFolder"];
+	    }
+	}
+
+}
+
+export namespace workspace {
+	
+	export class Entry {
+	    name: string;
+	    path: string;
+	    isDir: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Entry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.isDir = source["isDir"];
+	    }
 	}
 
 }

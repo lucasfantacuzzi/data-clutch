@@ -4,13 +4,19 @@ import {conn} from '../models';
 import {result} from '../models';
 import {duck} from '../models';
 import {main} from '../models';
+import {store} from '../models';
 import {pg} from '../models';
+import {workspace} from '../models';
 
 export function CancelQuery(arg1:string):Promise<void>;
+
+export function CloseFolder():Promise<void>;
 
 export function Connect(arg1:string):Promise<void>;
 
 export function ConnectionStatuses():Promise<Array<conn.Status>>;
+
+export function CreateEntry(arg1:string,arg2:string,arg3:boolean):Promise<string>;
 
 export function DeleteConnection(arg1:string):Promise<void>;
 
@@ -22,11 +28,35 @@ export function DuckQuery(arg1:string,arg2:string,arg3:number):Promise<result.Re
 
 export function DuckTables():Promise<Array<duck.TableInfo>>;
 
+export function DuplicateEntry(arg1:string):Promise<string>;
+
+export function ExportFull(arg1:string,arg2:string,arg3:string,arg4:string):Promise<main.ExportInfo>;
+
+export function ExportLoaded(arg1:Array<string>,arg2:Array<any>,arg3:string):Promise<main.ExportInfo>;
+
 export function GetMcpInfo():Promise<main.McpInfo>;
+
+export function GetPrefs():Promise<store.Prefs>;
 
 export function GetSchema(arg1:string):Promise<pg.Schema>;
 
 export function ListConnections():Promise<Array<conn.Config>>;
+
+export function ListDir(arg1:string):Promise<Array<workspace.Entry>>;
+
+export function LoadSession():Promise<string>;
+
+export function MoveEntry(arg1:string,arg2:string):Promise<string>;
+
+export function OpenFolder(arg1:string):Promise<string>;
+
+export function PickFolder():Promise<string>;
+
+export function PickOpenFile():Promise<string>;
+
+export function PickSaveFile(arg1:string):Promise<string>;
+
+export function ReadFile(arg1:string):Promise<string>;
 
 export function RedisScan(arg1:string,arg2:string,arg3:string,arg4:number):Promise<main.RedisPage>;
 
@@ -34,7 +64,11 @@ export function RefreshSchema(arg1:string):Promise<pg.Schema>;
 
 export function RegenerateMcpToken():Promise<main.McpInfo>;
 
+export function RenameEntry(arg1:string,arg2:string):Promise<string>;
+
 export function RetryNow(arg1:string):Promise<void>;
+
+export function RevealInFileManager(arg1:string):Promise<void>;
 
 export function RunQuery(arg1:string,arg2:string,arg3:string,arg4:number):Promise<result.Result>;
 
@@ -42,6 +76,18 @@ export function SaveConnection(arg1:conn.Config):Promise<conn.Config>;
 
 export function SaveQueryToDuck(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string):Promise<main.SaveInfo>;
 
+export function SaveSession(arg1:string):Promise<void>;
+
 export function SetMcp(arg1:boolean,arg2:number):Promise<main.McpInfo>;
 
+export function SetPrefs(arg1:store.Prefs):Promise<store.Prefs>;
+
 export function TestConnection(arg1:conn.Config):Promise<conn.TestResult>;
+
+export function TrashEntry(arg1:string):Promise<void>;
+
+export function WorkspaceFiles():Promise<Array<workspace.Entry>>;
+
+export function WorkspaceRoot():Promise<string>;
+
+export function WriteFile(arg1:string,arg2:string):Promise<void>;

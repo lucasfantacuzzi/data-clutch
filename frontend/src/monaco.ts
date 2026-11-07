@@ -98,4 +98,52 @@ monaco.editor.defineTheme('darcula', {
     },
 })
 
+monaco.editor.defineTheme('clutch-light', {
+    base: 'vs',
+    inherit: true,
+    rules: [
+        {token: '', foreground: '080808'},
+        {token: 'keyword', foreground: '0033b3'},
+        {token: 'keyword.sql', foreground: '0033b3'},
+        {token: 'string', foreground: '067d17'},
+        {token: 'string.sql', foreground: '067d17'},
+        {token: 'string.double', foreground: '067d17'},
+        {token: 'number', foreground: '1750eb'},
+        {token: 'number.sql', foreground: '1750eb'},
+        {token: 'comment', foreground: '8c8c8c', fontStyle: 'italic'},
+        {token: 'comment.sql', foreground: '8c8c8c', fontStyle: 'italic'},
+        {token: 'predefined.sql', foreground: '00627a'},
+        {token: 'identifier.quote', foreground: '871094'},
+    ],
+    colors: {
+        'editor.background': '#ffffff',
+        'editor.foreground': '#080808',
+        'editorGutter.background': '#ffffff',
+        'editorLineNumber.foreground': '#aeb3c2',
+        'editorLineNumber.activeForeground': '#4b4d54',
+        'editor.lineHighlightBackground': '#f5f8fe',
+        'editor.lineHighlightBorder': '#f5f8fe',
+        'editor.selectionBackground': '#a6d2ff',
+        'editor.inactiveSelectionBackground': '#d4e2ff',
+        'editorWidget.background': '#f7f8fa',
+        'editorWidget.border': '#d3d5db',
+        'editorSuggestWidget.background': '#f7f8fa',
+        'editorSuggestWidget.border': '#d3d5db',
+        'editorSuggestWidget.selectedBackground': '#d4e2ff',
+        'list.hoverBackground': '#eceef2',
+        'list.activeSelectionBackground': '#d4e2ff',
+        'input.background': '#ffffff',
+        'input.border': '#c4c6cc',
+        'focusBorder': '#3574f0',
+        'editorOverviewRuler.border': '#00000000',
+        'menu.background': '#f7f8fa',
+        'menu.selectionBackground': '#d4e2ff',
+    },
+})
+
+// The editor that last had focus: menu actions (Undo, Find...) target it.
+let activeEditor: monaco.editor.IStandaloneCodeEditor | null = null
+export const setActiveEditor = (e: monaco.editor.IStandaloneCodeEditor | null) => { activeEditor = e }
+export const getActiveEditor = () => activeEditor
+
 export {monaco}

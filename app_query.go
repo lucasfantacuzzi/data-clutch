@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"data-clutch/internal/conn"
 	"data-clutch/internal/duck"
@@ -14,7 +15,13 @@ import (
 )
 
 func (a *App) track(queryID string) (context.Context, func()) {
-	ctx, cancel := context.WithCancel(a.ctx)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if t := a.store.Settings().Prefs.TimeoutSec; t > 0 {
+		ctx, cancel = context.WithTimeout(a.ctx, time.Duration(t)*time.Second)
+	} else {
+		ctx, cancel = context.WithCancel(a.ctx)
+	}
 	a.mu.Lock()
 	a.running[queryID] = cancel
 	a.mu.Unlock()

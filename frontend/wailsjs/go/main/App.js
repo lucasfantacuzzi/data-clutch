@@ -6,12 +6,20 @@ export function CancelQuery(arg1) {
   return window['go']['main']['App']['CancelQuery'](arg1);
 }
 
+export function CloseFolder() {
+  return window['go']['main']['App']['CloseFolder']();
+}
+
 export function Connect(arg1) {
   return window['go']['main']['App']['Connect'](arg1);
 }
 
 export function ConnectionStatuses() {
   return window['go']['main']['App']['ConnectionStatuses']();
+}
+
+export function CreateEntry(arg1, arg2, arg3) {
+  return window['go']['main']['App']['CreateEntry'](arg1, arg2, arg3);
 }
 
 export function DeleteConnection(arg1) {
@@ -34,8 +42,24 @@ export function DuckTables() {
   return window['go']['main']['App']['DuckTables']();
 }
 
+export function DuplicateEntry(arg1) {
+  return window['go']['main']['App']['DuplicateEntry'](arg1);
+}
+
+export function ExportFull(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ExportFull'](arg1, arg2, arg3, arg4);
+}
+
+export function ExportLoaded(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExportLoaded'](arg1, arg2, arg3);
+}
+
 export function GetMcpInfo() {
   return window['go']['main']['App']['GetMcpInfo']();
+}
+
+export function GetPrefs() {
+  return window['go']['main']['App']['GetPrefs']();
 }
 
 export function GetSchema(arg1) {
@@ -44,6 +68,38 @@ export function GetSchema(arg1) {
 
 export function ListConnections() {
   return window['go']['main']['App']['ListConnections']();
+}
+
+export function ListDir(arg1) {
+  return window['go']['main']['App']['ListDir'](arg1);
+}
+
+export function LoadSession() {
+  return window['go']['main']['App']['LoadSession']();
+}
+
+export function MoveEntry(arg1, arg2) {
+  return window['go']['main']['App']['MoveEntry'](arg1, arg2);
+}
+
+export function OpenFolder(arg1) {
+  return window['go']['main']['App']['OpenFolder'](arg1);
+}
+
+export function PickFolder() {
+  return window['go']['main']['App']['PickFolder']();
+}
+
+export function PickOpenFile() {
+  return window['go']['main']['App']['PickOpenFile']();
+}
+
+export function PickSaveFile(arg1) {
+  return window['go']['main']['App']['PickSaveFile'](arg1);
+}
+
+export function ReadFile(arg1) {
+  return window['go']['main']['App']['ReadFile'](arg1);
 }
 
 export function RedisScan(arg1, arg2, arg3, arg4) {
@@ -58,8 +114,16 @@ export function RegenerateMcpToken() {
   return window['go']['main']['App']['RegenerateMcpToken']();
 }
 
+export function RenameEntry(arg1, arg2) {
+  return window['go']['main']['App']['RenameEntry'](arg1, arg2);
+}
+
 export function RetryNow(arg1) {
   return window['go']['main']['App']['RetryNow'](arg1);
+}
+
+export function RevealInFileManager(arg1) {
+  return window['go']['main']['App']['RevealInFileManager'](arg1);
 }
 
 export function RunQuery(arg1, arg2, arg3, arg4) {
@@ -74,10 +138,34 @@ export function SaveQueryToDuck(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SaveQueryToDuck'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function SaveSession(arg1) {
+  return window['go']['main']['App']['SaveSession'](arg1);
+}
+
 export function SetMcp(arg1, arg2) {
   return window['go']['main']['App']['SetMcp'](arg1, arg2);
 }
 
+export function SetPrefs(arg1) {
+  return window['go']['main']['App']['SetPrefs'](arg1);
+}
+
 export function TestConnection(arg1) {
   return window['go']['main']['App']['TestConnection'](arg1);
+}
+
+export function TrashEntry(arg1) {
+  return window['go']['main']['App']['TrashEntry'](arg1);
+}
+
+export function WorkspaceFiles() {
+  return window['go']['main']['App']['WorkspaceFiles']();
+}
+
+export function WorkspaceRoot() {
+  return window['go']['main']['App']['WorkspaceRoot']();
+}
+
+export function WriteFile(arg1, arg2) {
+  return window['go']['main']['App']['WriteFile'](arg1, arg2);
 }
