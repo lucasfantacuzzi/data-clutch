@@ -119,7 +119,7 @@ func (s *Store) flush() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path("connections.json"), b, 0o600)
+	return writeFileAtomic(s.path("connections.json"), b, 0o600)
 }
 
 // Secrets: OS keyring first; if no keyring is available (headless), fall back
@@ -163,7 +163,7 @@ func (s *Store) readFallback() map[string]string {
 
 func (s *Store) writeFallback(m map[string]string) error {
 	b, _ := json.Marshal(m)
-	return os.WriteFile(s.path("secrets.json"), b, 0o600)
+	return writeFileAtomic(s.path("secrets.json"), b, 0o600)
 }
 
 // InsecureSecrets reports whether any secret ended up in the plaintext fallback

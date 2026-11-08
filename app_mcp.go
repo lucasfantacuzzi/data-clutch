@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log/slog"
 	"strconv"
 
 	"data-clutch/internal/mcpsrv"
@@ -28,7 +27,7 @@ func (a *App) startMCP(st store.Settings) {
 	defer a.mu.Unlock()
 	if err != nil {
 		a.mcpErr = err.Error()
-		slog.Error("mcp: start failed", "port", st.McpPort, "err", err)
+		a.reportErr("mcp", fmt.Sprintf("MCP server failed to start on port %d", st.McpPort), err)
 		return
 	}
 	a.mcp, a.mcpErr = srv, ""
@@ -90,7 +89,7 @@ func (a *App) McpSecret(what string) string {
 func (a *App) GetMcpInfo() *McpInfo {
 	// make sure a token exists so the snippets are usable before enabling
 	if _, err := a.store.UpdateSettings(func(*store.Settings) {}); err != nil {
-		slog.Error("settings: ensure token failed", "err", err)
+		a.reportErr("settings", "could not save the MCP token", err)
 	}
 	return a.mcpInfo()
 }
@@ -109,7 +108,7 @@ func (a *App) SetMcp(enabled bool, port int) *McpInfo {
 		}
 	})
 	if err != nil {
-		slog.Error("settings: save failed", "err", err)
+		a.reportErr("settings", "could not save MCP settings", err)
 	}
 	if enabled {
 		a.startMCP(st)
@@ -125,7 +124,7 @@ func (a *App) SetMcp(enabled bool, port int) *McpInfo {
 func (a *App) RegenerateMcpToken() *McpInfo {
 	st, err := a.store.UpdateSettings(func(s *store.Settings) { s.McpToken = store.NewToken() })
 	if err != nil {
-		slog.Error("settings: token regeneration failed", "err", err)
+		a.reportErr("settings", "could not save the new MCP token", err)
 	}
 	if st.McpEnabled {
 		a.startMCP(st)

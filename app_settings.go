@@ -1,10 +1,6 @@
 package main
 
-import (
-	"log/slog"
-
-	"data-clutch/internal/store"
-)
+import "data-clutch/internal/store"
 
 // GetPrefs returns the user preferences edited in the Settings dialog.
 func (a *App) GetPrefs() store.Prefs { return a.store.Settings().Prefs }
@@ -14,7 +10,7 @@ func (a *App) GetPrefs() store.Prefs { return a.store.Settings().Prefs }
 func (a *App) SetPrefs(p store.Prefs) store.Prefs {
 	st, err := a.store.UpdateSettings(func(s *store.Settings) { s.Prefs = p })
 	if err != nil {
-		slog.Error("settings: save prefs failed", "err", err)
+		a.reportErr("prefs", "could not save preferences", err)
 	}
 	return st.Prefs
 }

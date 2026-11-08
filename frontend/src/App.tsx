@@ -14,6 +14,8 @@ import {FileTree, baseName} from './FileTree'
 import {MenuBar, MenuDef} from './MenuBar'
 import {Welcome} from './Welcome'
 import {StatusBar} from './StatusBar'
+import {OutputPanel} from './OutputPanel'
+import {errText, report} from './log'
 import {QuickOpen} from './QuickOpen'
 import {UnsavedDialog} from './UnsavedDialog'
 import {COMMANDS, Handlers, effective, fmtCombo, installShortcuts} from './keybindings'
@@ -72,7 +74,7 @@ export default function App() {
     const {prefs, update, reload: reloadPrefs} = usePrefs()
     const [settingsOpen, setSettingsOpen] = useState<Section | null>(null)
     const [saveReq, setSaveReq] = useState<{tab: Tab; sql: string} | null>(null)
-    const [msg, setMsg] = useState('')
+    const [outputOpen, setOutputOpen] = useState(false)
     const [toast, setToast] = useState('')
     const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
     const [root, setRoot] = useState('')
@@ -95,14 +97,14 @@ export default function App() {
     const flash = (t: string) => { setToast(t); setTimeout(() => setToast(''), 3500) }
     const reload = useCallback(async () => setConfigs((await ListConnections()) ?? []), [])
     const reloadDuck = useCallback(async () => {
-        try { setDuck(((await DuckTables()) ?? []) as DuckTable[]) } catch (e) { setMsg(String(e)) }
+        try { setDuck(((await DuckTables()) ?? []) as DuckTable[]) } catch (e) { report(e, 'app') }
     }, [])
 
     const loadSchema = useCallback(async (id: string, refresh = false) => {
         try {
             const s = await (refresh ? RefreshSchema(id) : GetSchema(id))
             setSchemas(m => ({...m, [id]: s as unknown as Schema}))
-        } catch (e) { setMsg(String(e)) }
+        } catch (e) { report(e, 'app') }
     }, [])
 
     const loadKeys = useCallback(async (id: string, more = false) => {
@@ -112,7 +114,7 @@ export default function App() {
             const seen = new Set((cur?.keys ?? []).map(k => k.key))
             const keys = [...(cur?.keys ?? []), ...page.keys.filter(k => !seen.has(k.key))]
             setRedis(m => ({...m, [id]: {...page, keys}}))
-        } catch (e) { setMsg(String(e)) }
+        } catch (e) { report(e, 'app') }
     }, [])
 
     const loadMeta = useCallback((cfg: conn.Config | undefined, id: string, refresh = false) => {
@@ -188,7 +190,7 @@ export default function App() {
         try {
             if (!isLive(cfg.id) && !statuses[cfg.id]) await Connect(cfg.id)
             else consoleFor(cfg)
-        } catch (e) { setMsg(String(e)) }
+        } catch (e) { report(e, 'app') }
     }
 
     const doMenu = async (a: string, cfg: conn.Config) => {
@@ -209,7 +211,7 @@ export default function App() {
                     },
                 })
             }
-        } catch (e) { setMsg(String(e)) }
+        } catch (e) { report(e, 'app') }
     }
 
     const duckOpen = (t: DuckTable) =>
@@ -227,7 +229,6 @@ export default function App() {
     const kb = useMemo(() => effective(prefs.keybindings), [prefs.keybindings])
     const runKey = fmtCombo(kb['query.run'])
     const modalOpen = () => !!(settingsOpen || dialog || saveReq || confirmState || unsaved || quickOpen)
-    const errText = (e: unknown) => String(e).replace(/^Error: /, '')
 
     // ---- files, folders and file-backed tabs ----
     const extKind = (p: string): 'redis' | 'sql' => (/\.redis$/i.test(p) ? 'redis' : 'sql')
@@ -253,14 +254,14 @@ export default function App() {
         try {
             const text = await ReadFile(path)
             openTab({title: baseName(path), filePath: path, savedSql: text, sql: text, pick: true, ...defaultConn(extKind(path))})
-        } catch (e) { setMsg(errText(e)) }
+        } catch (e) { report(e, 'files') }
     }
 
     const adoptRoot = (dir: string) => { setRoot(dir); reloadPrefs() }
-    const pickFolder = async () => { try { const d = await PickFolder(); if (d) adoptRoot(d) } catch (e) { setMsg(errText(e)) } }
-    const openRecent = async (dir: string) => { try { adoptRoot(await OpenFolder(dir)) } catch (e) { setMsg(errText(e)); reloadPrefs() } }
+    const pickFolder = async () => { try { const d = await PickFolder(); if (d) adoptRoot(d) } catch (e) { report(e, 'files') } }
+    const openRecent = async (dir: string) => { try { adoptRoot(await OpenFolder(dir)) } catch (e) { report(e, 'files'); reloadPrefs() } }
     const closeFolder = async () => { await CloseFolder(); setRoot(''); reloadPrefs() }
-    const pickFile = async () => { try { const p = await PickOpenFile(); if (p) openFile(p) } catch (e) { setMsg(errText(e)) } }
+    const pickFile = async () => { try { const p = await PickOpenFile(); if (p) openFile(p) } catch (e) { report(e, 'files') } }
 
     const saveTab = async (id: string, saveAs = false): Promise<boolean> => {
         const t = tabsRef.current.find(x => x.id === id)
@@ -275,7 +276,7 @@ export default function App() {
             await WriteFile(path, t.sql)
             patchTab(id, {filePath: path, savedSql: t.sql, title: baseName(path), pick: true})
             return true
-        } catch (e) { setMsg(errText(e)); return false }
+        } catch (e) { report(e, 'files'); return false }
     }
 
     const requestClose = (id: string) => {
@@ -363,7 +364,7 @@ export default function App() {
         if (!restored.current) return
         const h = setTimeout(() => {
             const snap = {v: 1, active, hidden, tabs: tabs.map(({id, title, connId, kind, sql, filePath, savedSql, pick}) => ({id, title, connId, kind, sql, filePath, savedSql, pick}))}
-            SaveSession(JSON.stringify(snap)).catch(() => {})
+            SaveSession(JSON.stringify(snap)).catch(e => report(e, 'session'))
         }, 500)
         return () => clearTimeout(h)
     }, [tabs, active, hidden])
@@ -376,6 +377,8 @@ export default function App() {
     }, [tabs, prefs.autosave])
 
     // files edited outside the app: follow them, or ask when we hold unsaved edits
+    useEffect(() => EventsOn('app:error', (e: {source: string; text: string}) => report(e.text, e.source)), [])
+
     useEffect(() => EventsOn('fs:changed', async (paths: string[]) => {
         const changed = new Set(paths)
         for (const t of tabsRef.current) {
@@ -394,7 +397,7 @@ export default function App() {
         }
     }), [])
 
-    useEffect(() => { GetMcpInfo().then(i => setMcp({running: i.running, port: i.port})).catch(() => {}) }, [settingsOpen])
+    useEffect(() => { GetMcpInfo().then(i => setMcp({running: i.running, port: i.port})).catch(e => report(e, 'mcp')) }, [settingsOpen])
 
     const choicesFor = (t: Tab): ConnChoice[] => {
         const label = (c: conn.Config) => c.name + (isLive(c.id) ? '' : ' (not connected)')
@@ -439,6 +442,7 @@ export default function App() {
         ]},
         {label: 'View', items: [
             {label: hidden ? 'Show sidebar' : 'Hide sidebar', hint: keyLabel('view.sidebar'), run: () => setHidden(h => !h)},
+            {label: outputOpen ? 'Hide output' : 'Show output', run: () => setOutputOpen(o => !o)},
             {label: 'Go to file…', hint: keyLabel('nav.quickOpen'), run: () => setQuickOpen(true)},
             '-',
             {header: 'Theme'},
@@ -468,7 +472,7 @@ export default function App() {
     const runConfirm = async () => {
         const c = confirmState
         setConfirmState(null)
-        try { await c?.run() } catch (e) { setMsg(String(e)) }
+        try { await c?.run() } catch (e) { report(e, 'app') }
     }
 
     const nameOf = (t: Tab) => (t.kind === 'duck' ? 'Local DuckDB' : t.connId === '' ? 'No connection' : cfgOf(t.connId)?.name ?? 'deleted connection')
@@ -485,7 +489,7 @@ export default function App() {
                         <button className="icon-btn" title="Settings (Ctrl+,)" aria-label="Settings" onClick={() => setSettingsOpen("appearance")}><Icon name="gear" color="currentColor"/></button>
                     </div>
                     <FileTree root={root} onOpenFile={openFile} onOpenFolder={pickFolder} onCloseFolder={closeFolder}
-                              onPathChanged={onPathChanged} onError={setMsg}
+                              onPathChanged={onPathChanged} onError={m => report(m, 'files')}
                               confirm={c => setConfirmState({...c})}/>
                     <Tree configs={configs} statuses={statuses} schemas={schemas} redis={redis} duck={duck}
                           onConnect={onConnect}
@@ -520,7 +524,7 @@ export default function App() {
                             <Console ref={el => { if (el) consoles.current[t.id] = el; else delete consoles.current[t.id] }}
                                      tab={t} connName={nameOf(t)} live={isLive(t.connId)} runKey={runKey}
                                      choices={t.pick || t.filePath !== undefined ? choicesFor(t) : undefined}
-                                     onPickConn={v => pickConn(t, v)} onToast={flash} onError={setMsg}
+                                     onPickConn={v => pickConn(t, v)} onToast={flash} onError={m => report(m, 'query')}
                                      schema={t.kind === 'duck' ? duckSch : schemas[t.connId]}
                                      onChange={p => patchTab(t.id, p)}
                                      onRun={sql => requestRun(t, sql)}
@@ -530,9 +534,10 @@ export default function App() {
                     ))}
                 </div>
             </div>
+            {outputOpen && <OutputPanel onClose={() => setOutputOpen(false)}/>}
             <StatusBar nLive={nLive} nTables={duck.length} root={root} tab={activeTab} connName={activeTab ? nameOf(activeTab) : ''}
                        live={activeTab ? isLive(activeTab.connId) : false} result={activeTab?.result} mcp={mcp}
-                       msg={msg} onClearMsg={() => setMsg('')} onOpenSettings={() => setSettingsOpen('mcp')}/>
+                       onToggleOutput={() => setOutputOpen(o => !o)} onOpenSettings={() => setSettingsOpen('mcp')}/>
 
             {menu?.cfg && (() => {
                 const cfg = menu.cfg!

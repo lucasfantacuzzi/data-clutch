@@ -538,3 +538,15 @@ table.keys td:first-child { width: 46%; }
 .keycap:hover { border-color: var(--border-hover); }
 .keycap.rec { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); color: var(--accent-text); }
 .k-act { display: flex; gap: 4px; padding-left: 8px; }
+
+/* Output panel */
+.output-panel { flex: none; height: 180px; display: flex; flex-direction: column; background: var(--bg-0); border-top: 1px solid var(--line); min-height: 0; }
+.output-head { display: flex; align-items: center; gap: 4px; padding: 0 8px; height: 28px; flex: none; background: var(--bg-1); border-bottom: 1px solid var(--line); }
+.output-body { flex: 1; overflow: auto; padding: 4px 0; font: 12px/1.5 var(--mono); user-select: text; }
+.output-empty { padding: 8px 12px; color: var(--text-dim); }
+.output-line { display: flex; gap: 10px; padding: 1px 12px; }
+.output-line.error .o-text { color: var(--err-text); }
+.output-line.warn .o-text { color: var(--text-mid); }
+.o-time, .o-src { color: var(--text-dim); flex: none; }
+.o-text { white-space: pre-wrap; word-break: break-word; min-width: 0; }
+.sb-badge { min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--danger); color: #fff; font-size: 10.5px; line-height: 16px; text-align: center; }

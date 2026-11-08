@@ -1,6 +1,7 @@
 import {createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState} from 'react'
 import {GetPrefs, SetPrefs} from '../wailsjs/go/main/App'
 import {store} from '../wailsjs/go/models'
+import {report} from './log'
 
 export type Prefs = store.Prefs
 export type Resolved = 'dark' | 'light'
@@ -36,7 +37,7 @@ export function PrefsProvider({children}: {children: ReactNode}) {
     const timer = useRef<number | undefined>(undefined)
 
     useEffect(() => {
-        GetPrefs().then(p => { latest.current = p; setPrefs(p) }).catch(() => {}).finally(() => setReady(true))
+        GetPrefs().then(p => { latest.current = p; setPrefs(p) }).catch(e => report(e, 'prefs')).finally(() => setReady(true))
     }, [])
 
     useEffect(() => {
@@ -65,12 +66,12 @@ export function PrefsProvider({children}: {children: ReactNode}) {
         window.clearTimeout(timer.current)
         timer.current = window.setTimeout(() => {
             const sent = latest.current
-            SetPrefs(sent).then(p => { if (latest.current === sent) { latest.current = p; setPrefs(p) } }).catch(() => {})
+            SetPrefs(sent).then(p => { if (latest.current === sent) { latest.current = p; setPrefs(p) } }).catch(e => report(e, 'prefs'))
         }, 250)
     }, [])
 
     const reload = useCallback(() => {
-        GetPrefs().then(p => { latest.current = p; setPrefs(p) }).catch(() => {})
+        GetPrefs().then(p => { latest.current = p; setPrefs(p) }).catch(e => report(e, 'prefs'))
     }, [])
 
     const value = useMemo(() => ({prefs, resolved, monoFont, update, reload}), [prefs, resolved, monoFont, update, reload])

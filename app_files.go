@@ -29,7 +29,7 @@ func (a *App) openFolder(dir string) (string, error) {
 		s.Prefs.LastFolder = root
 		s.Prefs.RecentFolders = append([]string{root}, slices.DeleteFunc(slices.Clone(s.Prefs.RecentFolders), func(p string) bool { return p == root })...)
 	}); err != nil {
-		slog.Error("settings: remember folder failed", "err", err)
+		a.reportErr("settings", "could not remember the open folder", err)
 	}
 	return root, nil
 }
@@ -48,19 +48,23 @@ func (a *App) OpenFolder(dir string) (string, error) {
 	root, err := a.openFolder(dir)
 	if err != nil {
 		// a folder that vanished must not be offered again
-		_, _ = a.store.UpdateSettings(func(s *store.Settings) {
+		if _, uerr := a.store.UpdateSettings(func(s *store.Settings) {
 			s.Prefs.RecentFolders = slices.DeleteFunc(slices.Clone(s.Prefs.RecentFolders), func(p string) bool { return p == dir })
 			if s.Prefs.LastFolder == dir {
 				s.Prefs.LastFolder = ""
 			}
-		})
+		}); uerr != nil {
+			a.reportErr("settings", "could not update recent folders", uerr)
+		}
 	}
 	return root, err
 }
 
 func (a *App) CloseFolder() {
 	a.ws.Close()
-	_, _ = a.store.UpdateSettings(func(s *store.Settings) { s.Prefs.LastFolder = "" })
+	if _, err := a.store.UpdateSettings(func(s *store.Settings) { s.Prefs.LastFolder = "" }); err != nil {
+		a.reportErr("settings", "could not clear the last folder", err)
+	}
 }
 
 func (a *App) WorkspaceRoot() string { return a.ws.Root() }

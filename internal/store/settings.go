@@ -125,7 +125,7 @@ func (s *Store) migrateLegacyToken() {
 	defer s.mu.Unlock()
 	st := s.loadSettings()
 	if out, err := json.MarshalIndent(st, "", "  "); err == nil {
-		_ = os.WriteFile(s.path("settings.json"), out, 0o600)
+		_ = writeFileAtomic(s.path("settings.json"), out, 0o600)
 	}
 }
 
@@ -145,8 +145,11 @@ func (s *Store) UpdateSettings(fn func(*Settings)) (Settings, error) {
 		}
 		s.tokenCache = st.McpToken
 	}
-	b, _ := json.MarshalIndent(st, "", "  ")
-	return st, os.WriteFile(s.path("settings.json"), b, 0o600)
+	b, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return st, err
+	}
+	return st, writeFileAtomic(s.path("settings.json"), b, 0o600)
 }
 
 func NewToken() string {

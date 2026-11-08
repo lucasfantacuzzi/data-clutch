@@ -1,4 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react'
+import {report} from './log'
 import {WorkspaceFiles} from '../wailsjs/go/main/App'
 import {Dialog} from './Dialog'
 import {Icon} from './Icons'
@@ -22,7 +23,7 @@ export function QuickOpen({root, onOpen, onClose}: {root: string; onOpen: (path:
     const [idx, setIdx] = useState(0)
     const list = useRef<HTMLDivElement>(null)
 
-    useEffect(() => { if (root) WorkspaceFiles().then(f => setFiles((f ?? []) as F[])).catch(() => {}) }, [root])
+    useEffect(() => { if (root) WorkspaceFiles().then(f => setFiles((f ?? []) as F[])).catch(e => report(e, 'files')) }, [root])
     const rel = (p: string) => (p.startsWith(root) ? p.slice(root.length).replace(/^[\\/]/, '') : p)
     const shown = useMemo(() => {
         const needle = q.trim().toLowerCase()
