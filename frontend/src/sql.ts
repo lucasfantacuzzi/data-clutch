@@ -36,8 +36,12 @@ export function statementAt(text: string, offset: number): string {
     if (spans.length === 0) return ''
     let pick = spans[0]
     for (const s of spans) {
-        if (offset >= s.start) pick = s
-        if (offset <= s.end) { pick = s; break }
+        // a span starts right after the previous ';', so skip its leading whitespace:
+        // a cursor in the gap belongs to the statement before it
+        const first = s.start + (text.slice(s.start, s.end).length - text.slice(s.start, s.end).trimStart().length)
+        if (offset < first) break
+        pick = s
+        if (offset <= s.end + 1) break // +1: the cursor just after the ';' still counts
     }
     return text.slice(pick.start, pick.end).trim()
 }
