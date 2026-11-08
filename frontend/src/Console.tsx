@@ -10,6 +10,7 @@ import {ResultGrid} from './ResultGrid'
 import {Icon, kindIcon} from './Icons'
 import {Pinned, Result, Schema, Tab} from './types'
 import {usePrefs} from './prefs'
+import {report} from './log'
 
 export interface ConsoleHandle { run: () => void; focus: () => void }
 export interface ConnChoice { value: string; label: string }
@@ -129,6 +130,7 @@ export const Console = forwardRef<ConsoleHandle, Props>(function Console({tab, c
         try {
             const info = await ExportFull(tab.kind === 'duck' ? '' : tab.connId, id, shownSql, exportName())
             if (info?.path) onToast(`Exported ${info.rows} row${info.rows === 1 ? '' : 's'} to ${info.path}`)
+            if (info?.truncated) report(`Export stopped at the row limit (${info.rows} rows); ${info.path} is incomplete.`, 'export', 'warn')
         } catch (e) { onError(String(e).replace(/^Error: /, '')) }
         finally { setExporting('') }
     }

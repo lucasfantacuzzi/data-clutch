@@ -23,6 +23,8 @@ var csvFilter = []runtime.FileFilter{{DisplayName: "CSV (*.csv)", Pattern: "*.cs
 type ExportInfo struct {
 	Path string `json:"path"` // empty when the user cancelled the dialog
 	Rows int64  `json:"rows"`
+	// Truncated is true when the server-side row cap cut the export short.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 func csvCell(v any) string {
@@ -202,5 +204,5 @@ func writeResult(path string, res *result.Result) (*ExportInfo, error) {
 	if err = out.finish(err); err != nil {
 		return nil, err
 	}
-	return &ExportInfo{Path: path, Rows: out.rows}, nil
+	return &ExportInfo{Path: path, Rows: out.rows, Truncated: res.Truncated}, nil
 }

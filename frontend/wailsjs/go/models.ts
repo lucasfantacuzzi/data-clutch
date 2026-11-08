@@ -141,6 +141,7 @@ export namespace main {
 	export class ExportInfo {
 	    path: string;
 	    rows: number;
+	    truncated?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ExportInfo(source);
@@ -150,6 +151,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
 	        this.rows = source["rows"];
+	        this.truncated = source["truncated"];
 	    }
 	}
 	export class McpInfo {

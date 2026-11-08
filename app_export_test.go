@@ -49,3 +49,15 @@ func TestCSVOutFailureLeavesNothing(t *testing.T) {
 		t.Fatalf("leftover files: %v", es)
 	}
 }
+
+func TestWriteResultReportsTruncation(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "out.csv")
+	res := &result.Result{Columns: []result.Col{{Name: "a"}}, Rows: [][]any{{1}, {2}}, Truncated: true}
+	info, err := writeResult(target, res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.Truncated || info.Rows != 2 {
+		t.Fatalf("got %+v", info)
+	}
+}
