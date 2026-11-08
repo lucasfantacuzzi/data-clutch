@@ -104,3 +104,41 @@ func TestReadOnlyQuery(t *testing.T) {
 		t.Fatal("table was modified")
 	}
 }
+
+func TestReadOnlyQueryRejectsHiddenStatements(t *testing.T) {
+	d := open(t)
+	ctx := context.Background()
+	if _, err := d.Query(ctx, "create table t(a int)", 10); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		"select 1 /* ' */; commit; drop table t",
+		"select 1 /* /* nested */ ' */; drop table t",
+		"select 1 -- '\n; drop table t",
+		"select $$ ' $$; commit; drop table t",
+		"select $x$ ' $x$; commit; drop table t",
+		"select 'unterminated; drop table t",
+		"select 1 /* never closed; drop table t",
+		"from t; drop table t",
+	} {
+		if _, err := d.ReadOnlyQuery(ctx, q, 10); err == nil {
+			t.Errorf("expected %q to be rejected", q)
+		}
+		if _, err := d.Query(ctx, "select count(*) from t", 10); err != nil {
+			t.Fatalf("table t was dropped by %q", q)
+		}
+	}
+	for _, q := range []string{
+		"select 'a;b' as x",
+		`select "we;ird" from (select 1 as "we;ird")`,
+		"select 'it''s; fine'",
+		"select 1 /* ; */ + 1",
+		"select 1 -- ; trailing",
+		"select $$a;b$$",
+		"select a from t;",
+	} {
+		if _, err := d.ReadOnlyQuery(ctx, q, 10); err != nil {
+			t.Errorf("expected %q to pass, got %v", q, err)
+		}
+	}
+}

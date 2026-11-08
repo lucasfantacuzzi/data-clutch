@@ -193,22 +193,72 @@ func (d *DB) ReadOnlyQuery(ctx context.Context, q string, limit int) (*result.Re
 	return collect(rows, limit, start)
 }
 
+// hasSemicolonOutsideQuotes reports whether s could contain more than one
+// statement. It understands '...' and "..." (doubled quotes escape), -- and
+// nested /* */ comments, and $tag$...$tag$ strings. Anything left unterminated
+// counts as unsafe, so a quote hidden in a comment can't mask a later ';'.
 func hasSemicolonOutsideQuotes(s string) bool {
-	var quote rune
-	for _, r := range s {
+	for i := 0; i < len(s); {
+		c := s[i]
 		switch {
-		case quote != 0:
-			if r == quote {
-				quote = 0
-			}
-		case r == '\'' || r == '"':
-			quote = r
-		case r == ';':
+		case c == ';':
 			return true
+		case c == '\'' || c == '"':
+			j := i + 1
+			for ; j < len(s); j++ {
+				if s[j] == c {
+					if j+1 < len(s) && s[j+1] == c { // doubled quote
+						j++
+						continue
+					}
+					break
+				}
+			}
+			if j >= len(s) {
+				return true
+			}
+			i = j + 1
+		case c == '-' && i+1 < len(s) && s[i+1] == '-':
+			j := strings.IndexByte(s[i:], '\n')
+			if j < 0 {
+				return false
+			}
+			i += j + 1
+		case c == '/' && i+1 < len(s) && s[i+1] == '*':
+			depth := 1
+			j := i + 2
+			for ; j+1 < len(s) && depth > 0; j++ {
+				switch {
+				case s[j] == '/' && s[j+1] == '*':
+					depth++
+					j++
+				case s[j] == '*' && s[j+1] == '/':
+					depth--
+					j++
+				}
+			}
+			if depth > 0 {
+				return true
+			}
+			i = j
+		case c == '$':
+			if m := dollarTag.FindString(s[i:]); m != "" {
+				end := strings.Index(s[i+len(m):], m)
+				if end < 0 {
+					return true
+				}
+				i += len(m) + end + len(m)
+			} else {
+				i++
+			}
+		default:
+			i++
 		}
 	}
 	return false
 }
+
+var dollarTag = regexp.MustCompile(`^\$([A-Za-z_][A-Za-z0-9_]*)?\$`)
 
 func collect(rows *sql.Rows, limit int, start time.Time) (*result.Result, error) {
 	defer rows.Close()
